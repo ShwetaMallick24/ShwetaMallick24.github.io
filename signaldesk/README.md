@@ -1,20 +1,21 @@
 # SignalDesk
 
-A personal workspace for monitoring public crypto market data, reviewing threshold-based signals, and keeping a decision journal.
+A personal crypto research screener and thesis tracker using public Coinbase Exchange data.
 
-## Features
-- Six-asset watchlist using public Coinbase Exchange market statistics
-- Hourly close charts, retrieval timestamps, and clearly labeled stale-data fallback
-- Adjustable price-move, trading-range, and stablecoin-deviation thresholds
-- Review states, local notes, and JSON journal export
+## Research workflow
+- Choose Balanced, Momentum, or Lower volatility to apply documented factor weights.
+- Screen seven non-stablecoin assets by historical momentum, Bitcoin-relative returns, annualized volatility, 90-close drawdown, and estimated venue activity.
+- Save a shortlist and compare up to three assets.
+- Record a thesis, invalidation criteria, review date, due-diligence checks, and market snapshot.
+- Revisit date and market-threshold triggers, then export your research and source data.
 
-No API key or account connection is required. Notes remain in the browser's local storage and do not sync across devices. Monitoring runs only while the app is open. Market movements are not fraud classifications or investment recommendations.
+Scores summarize historical behavior. They are not forecasts, calibrated probabilities, valuations, buy recommendations, or backtested strategies. Missing essential historical inputs produce no score. Token supply, unlocks, security history, fundamentals, and regulatory status are not automatically assessed.
 
-## Run
-Serve this folder with a static web server, for example `python3 -m http.server 8000`.
+## Data
+Coinbase Exchange public `/products/{asset}-USD/stats` and daily `/candles?granularity=86400` endpoints. The current UTC daily candle is excluded. Missing intervals are not interpolated. A dated source snapshot is bundled for offline or failed-refresh fallback. USD activity is a last-price-times-base-volume proxy, not executable market depth.
 
-## GitHub Pages
-Set Settings → Pages → Source to **GitHub Actions**, then push to the main branch or run the Publish SignalDesk workflow. The workflow publishes the static app without a build step.
+## Privacy
+No account, wallet or API key is connected. Research notes, thesis entries, review status and shortlists remain in browser local storage. Export for backup. Existing SignalDesk market journal entries are migrated on first use of the research workspace.
 
-## Sources
-Coinbase Exchange public product statistics and hourly candle endpoints. See the app's Sources & methods page for formulas and provenance.
+## Hosting
+Static HTML, CSS and native JavaScript modules; no build step. Serve this directory over HTTP or publish on GitHub Pages. Keep all relative asset paths together.
