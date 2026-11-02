@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SignalDesk: Research to Robinhood, with guardrails</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f6f7f9;--panel:#fff;--ink:#14171c;--ink2:#5b6472;--line:#e4e7ec;--soft:#f1f3f6;
+  --accent:#1d4ed8;--accentSoft:#e8efff;--good:#0f7b4a;--goodSoft:#e5f5ec;--warn:#a15c00;--warnSoft:#fff3dd;
+  --bad:#b42318;--badSoft:#fdecea;--shadow:#8a94a6;--mono:'JetBrains Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+button,input,select,textarea{font:inherit;color:inherit}
+header.top{background:#0f172a;color:#fff;padding:14px 24px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.01em}
+.brand .dot{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#60a5fa,#1d4ed8);display:grid;place-items:center;font-size:12px}
+.brand small{font-weight:400;color:#94a3b8;font-size:12px}
+.kpis{display:flex;gap:22px;margin-left:auto;flex-wrap:wrap;align-items:center}
+.kpi{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em}
+.kpi b{display:block;color:#fff;font-size:15px;text-transform:none;letter-spacing:0;font-weight:600}
+.mode{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#1e293b;border:1px solid #334155}
+.mode.sim{color:#93c5fd}.mode.dry{color:#fcd34d}.mode.live{color:#86efac}
+.kill{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid #475569;background:#1e293b;color:#fff;cursor:pointer}
+.kill.on{background:#b42318;border-color:#f87171}
+nav.tabs{display:flex;gap:2px;padding:0 24px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto}
+nav.tabs button{border:0;background:none;padding:13px 14px;cursor:pointer;color:var(--ink2);font-weight:500;border-bottom:2px solid transparent;white-space:nowrap}
+nav.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+.badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:var(--bad);color:#fff;font-size:11px;font-weight:600;margin-left:6px;text-align:center}
+main{max-width:1180px;margin:0 auto;padding:22px 24px 60px}
+h2{font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
+.sub{color:var(--ink2);margin:0 0 16px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+.panel h3{margin:0 0 10px;font-size:14px}
+.row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media(max-width:860px){.grid2,.grid3{grid-template-columns:1fr}.kpis{margin-left:0}}
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink2);font-weight:600;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:9px 8px;border-bottom:1px solid var(--soft);vertical-align:top}
+tr:last-child td{border-bottom:0}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono);font-size:12px}
+.muted{color:var(--ink2)}
+.small{font-size:12px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:500}
+.btn:hover{background:var(--soft)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#1e40af}
+.btn.danger{color:var(--bad);border-color:#f5c2bd}
+.btn.sm{padding:4px 9px;font-size:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.seg button{border:0;background:none;padding:7px 12px;cursor:pointer;color:var(--ink2);font-weight:500}
+.seg button.on{background:var(--accentSoft);color:var(--accent)}
+.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.chip.pass{background:var(--goodSoft);color:var(--good)}
+.chip.warn{background:var(--warnSoft);color:var(--warn)}
+.chip.block{background:var(--badSoft);color:var(--bad)}
+.chip.info{background:var(--accentSoft);color:var(--accent)}
+.chip.mutedc{background:var(--soft);color:var(--ink2)}
+.chip.shadow{background:#eef0f4;color:#4b5565;border:1px dashed var(--shadow)}
+.scorebar{height:6px;background:var(--soft);border-radius:4px;width:90px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px}
+.scorebar i{display:block;height:100%;background:var(--accent)}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2);font-weight:500}
+input[type=text],input[type=number],input[type=date],select,textarea{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fff;min-width:0}
+textarea{resize:vertical}
+input.cell{width:70px;padding:3px 6px;font-size:12px}
+.banner{padding:10px 12px;border-radius:8px;background:var(--warnSoft);color:#6b3d00;font-size:12.5px;margin-bottom:14px}
+.banner.info{background:var(--accentSoft);color:#1e3a8a}
+.banner.bad{background:var(--badSoft);color:#7a1a12}
+.rules td{padding:7px 8px}
+.why{font-size:12.5px}
+.why .plus{color:var(--good)}.why .minus{color:var(--warn)}
+.card{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:#fff}
+.card h4{margin:0 0 4px;font-size:14px}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;font-size:13px}
+.kv div:nth-child(odd){color:var(--ink2)}
+.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+.modal-bg.on{display:flex}
+.modal{background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:20px}
+.modal h3{margin:0 0 12px}
+.toast{position:fixed;bottom:20px;right:20px;background:#0f172a;color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;opacity:0;transform:translateY(8px);transition:.2s;z-index:30;max-width:360px}
+.toast.on{opacity:1;transform:none}
+.empty{color:var(--ink2);padding:18px;text-align:center;font-size:13px}
+.flex1{flex:1}
+.right{margin-left:auto}
+.star{cursor:pointer;border:0;background:none;font-size:16px;color:#c3c9d4;padding:0}
+.star.on{color:#e0a100}
+footer{color:var(--ink2);font-size:12px;text-align:center;padding:10px 24px 30px}
+pre.code{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px;font-family:var(--mono);font-size:11.5px;overflow:auto;max-height:220px;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="dot">S</span>SignalDesk <small>research → guarded execution</small></div>
+  <div class="kpis">
+    <div class="kpi">Portfolio<b id="k-port">–</b></div>
+    <div class="kpi">Buying power<b id="k-bp">–</b></div>
+    <div class="kpi">Open cases<b id="k-cases">0</b></div>
+    <span class="mode" id="k-mode">Simulation</span>
+    <button class="kill" id="k-kill" onclick="toggleKill()">Kill switch: off</button>
+  </div>
+</header>
+<nav class="tabs" id="tabs"></nav>
+<main id="view"></main>
+<footer>Scores mean research fit under your chosen style. They are not predicted returns or buy recommendations. <button class="btn sm" onclick="resetDemo()">Reset demo data</button></footer>
+
+<div class="modal-bg" id="modal"><div class="modal" id="modal-body"></div></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ---------- environment ---------- */
+const TOKEN = '__SIGNALDESK_TOKEN__';
+const ON_BRIDGE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') && !TOKEN.startsWith('__');
+const LS_KEY = 'signaldesk_v1';
+const DAY = 864e5;
+
+/* ---------- sample research inputs (illustrative, editable) ---------- */
+const ASSET_DEFAULTS = [
+  {sym:'BTC', name:'Bitcoin',   price:68000, spread:0.05, ret30:6,  vol:45, dd:-12, liqB:30,  unlock:'none', security:'ok'},
+  {sym:'ETH', name:'Ethereum',  price:3400,  spread:0.07, ret30:9,  vol:55, dd:-18, liqB:15,  unlock:'none', security:'ok'},
+  {sym:'SOL', name:'Solana',    price:160,   spread:0.15, ret30:14, vol:75, dd:-28, liqB:4,   unlock:'med',  security:'ok'},
+  {sym:'XRP', name:'XRP',       price:0.55,  spread:0.20, ret30:-3, vol:70, dd:-25, liqB:2.5, unlock:'low',  security:'ok'},
+  {sym:'ADA', name:'Cardano',   price:0.45,  spread:0.30, ret30:-6, vol:72, dd:-35, liqB:0.6, unlock:'low',  security:'ok'},
+  {sym:'AVAX',name:'Avalanche', price:30,    spread:0.40, ret30:4,  vol:80, dd:-38, liqB:0.5, unlock:'high', security:'ok'},
+  {sym:'LINK',name:'Chainlink', price:15,    spread:0.35, ret30:11, vol:70, dd:-26, liqB:0.7, unlock:'med',  security:'watch'}
+];
+const STYLES = {
+  balanced:{label:'Balanced',        w:{mom:.30, liq:.25, risk:.20, supply:.15, sec:.10}},
+  momentum:{label:'Momentum',        w:{mom:.50, liq:.25, risk:.10, supply:.10, sec:.05}},
+  lowvol:  {label:'Lower volatility',w:{mom:.10, liq:.25, risk:.45, supply:.10, sec:.10}}
+};
+const FACTOR_NAMES = {mom:'Momentum vs BTC', liq:'Liquidity', risk:'Volatility & drawdown', supply:'Supply / unlocks', sec:'Security flags'};
+
+function defaultRules(){
+  return [
+    {id:'kill',     name:'Kill switch',            cat:'Global',   mode:'enforce', enabled:true, locked:true, desc:'Halts every order and cancels open ones.'},
+    {id:'thesis',   name:'Thesis is current',      cat:'Thesis',   mode:'enforce', enabled:true, desc:'Buys need a linked thesis inside its review date with no fired risk trigger.'},
+    {id:'funds',    name:'Buying power / holdings',cat:'Account',  mode:'enforce', enabled:true, desc:'Buys must fit buying power; sells must fit holdings.'},
+    {id:'position', name:'Position limit',         cat:'Exposure', mode:'enforce', enabled:true, param:20,   unit:'% of total portfolio after the trade'},
+    {id:'size',     name:'Order size cap',         cat:'Exposure', mode:'enforce', enabled:true, param:1000, unit:'USD per order. Warn above, Block at 2×'},
+    {id:'daily',    name:'Daily spend cap',        cat:'Exposure', mode:'enforce', enabled:true, param:2500, unit:'USD of buys in a rolling 24h'},
+    {id:'velocity', name:'Velocity / duplicate',   cat:'Trading',  mode:'enforce', enabled:true, param:3,    unit:'orders per symbol in 10 min (more is blocked)'},
+    {id:'deviation',name:'Price deviation',        cat:'Trading',  mode:'enforce', enabled:true, param:2,    unit:'% limit price away from live quote (Warn)'},
+    {id:'spread',   name:'Spread guard',           cat:'Trading',  mode:'enforce', enabled:true, param:1,    unit:'% bid/ask spread; market orders blocked above'},
+    {id:'fit',      name:'Research fit',           cat:'Research', mode:'shadow',  enabled:true, param:4,    unit:'worst rank allowed for buys under current style (Warn)'},
+    {id:'quiet',    name:'Quiet hours',            cat:'Behavior', mode:'enforce', enabled:true, param:23, param2:6, unit:'local hours, start to end (Warn)'}
+  ];
+}
+function defaultState(){
+  const now = Date.now();
+  return {
+    v:1, style:'balanced', assets:JSON.parse(JSON.stringify(ASSET_DEFAULTS)),
+    shortlist:['BTC','ETH','SOL'], compare:[],
+    theses:[
+      {id:'T1', sym:'BTC', statement:'Core holding. Add on pullbacks while it leads the market on liquidity.', invalidation:'Loses relative strength for 30 days or breaks below my trigger price.', review:new Date(now+20*DAY).toISOString().slice(0,10), triggers:[{kind:'below', price:57800}], notes:'', created:now-30*DAY},
+      {id:'T2', sym:'ETH', statement:'Momentum improving vs BTC; liquidity is deep.', invalidation:'Momentum vs BTC turns negative.', review:new Date(now-3*DAY).toISOString().slice(0,10), triggers:[{kind:'below', price:2900}], notes:'Review overdue on purpose, to demo the thesis rule.', created:now-40*DAY}
+    ],
+    cash:10000, holdings:{BTC:0.02, ETH:0.5},
+    broker:{orders:{}, holdings:{BTC:0.02, ETH:0.5}},
+    orders:[], cases:[], audit:[], anomalies:[], pending:[],
+    rules:defaultRules(), kill:false, settingsChangedAt:0, forceSim:false,
+    keys:[
+      {id:'K1', label:'research-readonly', scopes:['Account read','Holdings read','Market data'], created:now-30*DAY, prefix:'rh-api-••••' + rnd4(), status:'active'},
+      {id:'K2', label:'execution',          scopes:['Account read','Holdings read','Market data','Place orders','Cancel orders'], created:now-30*DAY, prefix:'rh-api-••••' + rnd4(), status:'active'}
+    ],
+    seq:{order:1, case:1, thesis:3}
+  };
+}
+function rnd4(){return Math.random().toString(16).slice(2,6)}
+
+/* ---------- state ---------- */
+let S = load();
+function load(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s = JSON.parse(raw); if(s && s.v===1) return s; } }catch(e){} return defaultState(); }
+function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
+function resetDemo(){ openModal(`<h3>Reset demo data?</h3><p class="muted">This clears theses, orders, cases, the audit log and rule settings in this browser.</p><div class="row"><button class="btn primary" onclick="S=defaultState();save();closeModal();initMarket();render();toast('Demo data reset')">Reset</button><button class="btn" onclick="closeModal()">Cancel</button></div>`); }
+
+/* ---------- market data ---------- */
+const M = {};
+let bridge = {status:null, priceSource:'sim'};
+function initMarket(){
+  S.assets.forEach(a => { M[a.sym] = M[a.sym] || {}; setQuote(a.sym, a.price, a.spread); });
+}
+function setQuote(sym, mid, spreadPct){
+  const half = mid * spreadPct/100/2;
+  M[sym] = {mid, bid:mid-half, ask:mid+half, spread:spreadPct, ts:Date.now()};
+}
+function tickSim(){
+  if(bridge.priceSource === 'robinhood') return;
+  S.assets.forEach(a => {
+    const q = M[a.sym]; const drift = (Math.random()-0.5) * 0.003;
+    setQuote(a.sym, q.mid*(1+drift), a.spread);
+  });
+  fillOpenSimOrders();
+  evaluateTriggers();
+  updateHeader();
+  if(tab==='research' || tab==='trade') softRefresh();
+}
+async function pollBridgeQuotes(){
+  if(!liveMode() || !bridge.status || !bridge.status.configured) return;
+  try{
+    const r = await api('GET', '/api/quotes?symbols=' + S.assets.map(a=>a.sym).join(','));
+    (r.quotes||[]).forEach(q => {
+      const sym = q.symbol.replace('-USD','');
+      const bid = +q.bid, ask = +q.ask; if(!bid || !ask) return;
+      M[sym] = {mid:(bid+ask)/2, bid, ask, spread:(ask-bid)/((bid+ask)/2)*100, ts:Date.now()};
+    });
+    bridge.priceSource = 'robinhood';
+    updateHeader(); if(tab==='research'||tab==='trade') softRefresh();
+  }catch(e){ bridge.priceSource = 'sim'; }
+}
+
+/* ---------- bridge (local service) ---------- */
+function liveMode(){ return ON_BRIDGE && !S.forceSim && bridge.status && bridge.status.configured; }
+function modeLabel(){ if(!liveMode()) return {cls:'sim', text:'Simulation'}; return bridge.status.dry_run ? {cls:'dry', text:'Bridge: dry run'} : {cls:'live', text:'Bridge: LIVE'}; }
+async function api(method, path, body){
+  const res = await fetch(path, {method, headers:{'Content-Type':'application/json','X-SignalDesk-Token':TOKEN}, body: body?JSON.stringify(body):undefined});
+  const data = await res.json().catch(()=>({}));
+  if(!res.ok){ const err = new Error(data.error || ('HTTP '+res.status)); err.status = res.status; err.data = data; throw err; }
+  return data;
+}
+async function initBridge(){
+  if(!ON_BRIDGE) return;
+  try{ bridge.status = await api('GET','/api/status'); }catch(e){ bridge.status = {configured:false, error:e.message}; }
+  if(liveMode()){ await syncLiveAccount(); pollBridgeQuotes(); setInterval(pollBridgeQuotes, 15000); }
+  render();
+}
+async function syncLiveAccount(){
+  try{
+    const acct = await api('GET','/api/account');
+    if(acct && acct.buying_power != null) S.cash = +acct.buying_power;
+    const h = await api('GET','/api/holdings');
+    const hold = {}; (h.results||[]).forEach(x => { hold[x.asset_code] = +x.total_quantity; });
+    S.holdings = hold; S.broker.holdings = {...hold};
+    save(); updateHeader();
+  }catch(e){ logAudit('bridge', 'Account sync failed: ' + e.message); if(e.status===401) recordAnomaly('Signature rejected (401) by Robinhood', 'Possible key problem: check the key or revoke it.'); }
+}
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function usd(n, d){ if(n==null||isNaN(n)) return '–'; const digits = d!=null?d:(Math.abs(n)<1?4:2); return '$' + Number(n).toLocaleString('en-US',{minimumFractionDigits:digits, maximumFractionDigits:digits}); }
+function px(n){ return usd(n, n<1?4:(n<100?2:0)); }
+function qty(n){ return Number(n).toLocaleString('en-US',{maximumFractionDigits:8}); }
+function pct(n, d=1){ return (n>0?'+':'') + Number(n).toFixed(d) + '%'; }
+function when(ts){ const d = new Date(ts); return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+function uuid(){ return (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x'?r:(r&3|8)).toString(16); })); }
+function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('on'), 2600); }
+function openModal(html){ $('modal-body').innerHTML = html; $('modal').classList.add('on'); }
+function closeModal(){ $('modal').classList.remove('on'); }
+function rule(id){ return S.rules.find(r => r.id===id); }
+function today(){ return new Date().toISOString().slice(0,10); }
+
+function portfolioValue(holdings, cash){
+  holdings = holdings || S.holdings; cash = cash==null ? S.cash : cash;
+  return cash + Object.entries(holdings).reduce((s,[k,v]) => s + (M[k]?M[k].mid:0)*v, 0);
+}
+
+/* ---------- audit ---------- */
+function logAudit(type, detail, extra){
+  S.audit.unshift({ts:Date.now(), type, detail, ...(extra||{})});
+  if(S.audit.length > 1000) S.audit.length = 1000;
+  save();
+}
+function recordAnomaly(title, detail){
+  S.anomalies.unshift({ts:Date.now(), title, detail, ack:false});
+  logAudit('anomaly', title + ': ' + detail);
+}
+
+/* ---------- research scoring ---------- */
+function computeScores(){
+  const style = STYLES[S.style];
+  const btc = S.assets.find(a=>a.sym==='BTC');
+  const raw = S.assets.map(a => ({
+    sym:a.sym,
+    mom: a.ret30 - (btc?btc.ret30:0),
+    liq: Math.log10(Math.max(a.liqB, 0.001)),
+    risk: -(a.vol/100) + (a.dd/100),
+    supply: {none:100, low:75, med:40, high:10}[a.unlock] ?? 50,
+    sec: a.security==='ok' ? 100 : 40
+  }));
+  const keys = Object.keys(style.w);
+  const norm = {};
+  keys.forEach(k => {
+    const vals = raw.map(r=>r[k]); const lo = Math.min(...vals), hi = Math.max(...vals);
+    raw.forEach(r => { norm[r.sym] = norm[r.sym]||{}; norm[r.sym][k] = hi===lo ? 50 : (r[k]-lo)/(hi-lo)*100; });
+  });
+  const out = S.assets.map(a => {
+    const n = norm[a.sym]; let score = 0; keys.forEach(k => score += n[k]*style.w[k]);
+    const contrib = keys.map(k => ({k, v:n[k], w:style.w[k]}));
+    const best = contrib.slice().sort((x,y)=>y.v*y.w - x.v*x.w)[0];
+    const worst = contrib.filter(c=>c.w>=0.1).sort((x,y)=>x.v-y.v)[0];
+    return {a, score:Math.round(score), n, best, worst, relMom:raw.find(r=>r.sym===a.sym).mom};
+  }).sort((x,y)=>y.score-x.score);
+  out.forEach((r,i)=>r.rank=i+1);
+  return out;
+}
+function factorText(k, a, rel, good){
+  switch(k){
+    case 'mom': return a.sym==='BTC' ? 'Momentum benchmark (BTC)' : rel > 0 ? `Beating BTC by ${rel.toFixed(0)} pts over 30 days` : rel < 0 ? `Lagging BTC by ${Math.abs(rel).toFixed(0)} pts over 30 days` : 'Level with BTC over 30 days';
+    case 'liq': return good ? `Deep liquidity ($${a.liqB}B 24h volume)` : `Thin liquidity ($${a.liqB}B 24h volume)`;
+    case 'risk': return good ? `Lower volatility (${a.vol}% annualized)` : `Elevated volatility (${a.vol}%) and ${a.dd}% drawdown`;
+    case 'supply': return good ? (a.unlock==='none'?'No token unlock flagged':`Unlock risk only ${a.unlock}`) : `Token unlock risk: ${a.unlock}`;
+    case 'sec': return good ? 'No security flags entered' : 'Security flag: watch';
+  }
+}
+function verdict(score){ return score>=65 ? ['Investigate further','pass'] : score>=45 ? ['Watch','warn'] : ['Low fit','mutedc']; }
+
+/* ---------- theses ---------- */
+function thesisStatus(t){
+  const q = M[t.sym]; const fired = (t.triggers||[]).filter(tr => q && (tr.kind==='below' ? q.mid < tr.price : q.mid > tr.price));
+  if(fired.length) return {code:'trigger', label:'Risk trigger fired', cls:'block', fired};
+  if(t.review < today()) return {code:'review', label:'Review due', cls:'warn', fired:[]};
+  return {code:'current', label:'Current', cls:'pass', fired:[]};
+}
+const firedSeen = new Set();
+function evaluateTriggers(){
+  S.theses.forEach(t => { const st = thesisStatus(t); st.fired.forEach(f => { const key = t.id+f.kind+f.price; if(!firedSeen.has(key)){ firedSeen.add(key); logAudit('thesis', `Risk trigger fired on ${t.sym} thesis ${t.id}: price ${f.kind} ${px(f.price)}`); } }); });
+}
+
+/* ---------- rules engine ---------- */
+function evaluateOrder(o){
+  const R = [];
+  const q = M[o.sym];
+  const ranked = computeScores();
+  const rank = (ranked.find(r=>r.a.sym===o.sym)||{}).rank;
+  const notional = o.notional;
+  const add = (id, outcome, detail) => { const r = rule(id); if(!r) return; if(!r.enabled){ R.push({id, name:r.name, outcome:'skip', detail:'Rule disabled', shadow:false}); return; } R.push({id, name:r.name, outcome, detail, shadow: r.mode==='shadow' && outcome!=='pass'}); };
+
+  add('kill', S.kill ? 'block' : 'pass', S.kill ? 'Kill switch is on' : 'Trading enabled');
+
+  if(o.side==='buy'){
+    const t = S.theses.find(t=>t.id===o.thesisId);
+    if(!t) add('thesis','block','No thesis linked to this buy');
+    else { const st = thesisStatus(t); add('thesis', st.code==='current'?'pass':'block', st.code==='current' ? `Thesis ${t.id} is current (review ${t.review})` : `Thesis ${t.id}: ${st.label}`); }
+  } else add('thesis','pass','Sells do not need a thesis');
+
+  if(o.side==='buy') add('funds', notional <= S.cash ? 'pass':'block', `Needs ${usd(notional)} of ${usd(S.cash)} buying power`);
+  else { const have = S.holdings[o.sym]||0; add('funds', o.qty <= have ? 'pass':'block', `Selling ${qty(o.qty)} of ${qty(have)} ${o.sym} held`); }
+
+  { const r = rule('position'); const posAfter = ((S.holdings[o.sym]||0) + (o.side==='buy'?o.qty:-o.qty)) * q.mid; const share = posAfter / portfolioValue() * 100;
+    add('position', o.side==='sell' || share <= r.param ? 'pass':'block', `${o.sym} would be ${share.toFixed(1)}% of portfolio (limit ${r.param}%)`); }
+
+  { const r = rule('size'); const out = notional > 2*r.param ? 'block' : notional > r.param ? 'warn' : 'pass';
+    add('size', out, `${usd(notional)} vs cap ${usd(r.param,0)}`); }
+
+  if(o.side==='buy'){ const r = rule('daily'); const spent = S.orders.filter(x => x.id!==o.id && x.side==='buy' && x.ts > Date.now()-DAY && ['filled','open','submitted','dry-run'].includes(x.status)).reduce((s,x)=>s+x.notional,0);
+    add('daily', spent + notional <= r.param ? 'pass':'block', `${usd(spent)} spent in 24h + ${usd(notional)} vs cap ${usd(r.param,0)}`); }
+  else add('daily','pass','Sells do not count');
+
+  { const r = rule('velocity'); const n = S.orders.filter(x => x.id!==o.id && x.sym===o.sym && x.ts > Date.now()-10*60e3).length;
+    add('velocity', n < r.param ? 'pass':'block', `${n} ${o.sym} order attempts in last 10 min (limit ${r.param})`); }
+
+  if(o.type==='limit'){ const r = rule('deviation'); const ref = o.side==='buy' ? q.ask : q.bid; const dev = (o.limit - ref)/ref*100;
+    add('deviation', Math.abs(dev) <= r.param ? 'pass':'warn', `Limit ${px(o.limit)} is ${pct(dev,2)} from ${o.side==='buy'?'ask':'bid'} ${px(ref)}`); }
+  else add('deviation','pass','Market order: checked by spread guard');
+
+  { const r = rule('spread'); add('spread', o.type==='market' && q.spread > r.param ? 'block':'pass', `Spread ${q.spread.toFixed(2)}% (guard ${r.param}%${o.type==='market'?'':'; limit order'})`); }
+
+  if(o.side==='buy'){ const r = rule('fit'); add('fit', rank <= r.param ? 'pass':'warn', `${o.sym} ranks #${rank} of ${S.assets.length} under ${STYLES[S.style].label} (cutoff #${r.param})`); }
+  else add('fit','pass','Not applied to sells');
+
+  { const r = rule('quiet'); const h = new Date().getHours(); const inQuiet = r.param > r.param2 ? (h >= r.param || h < r.param2) : (h >= r.param && h < r.param2);
+    add('quiet', inQuiet ? 'warn':'pass', `Local hour ${h}:00; quiet ${r.param}:00 to ${r.param2}:00`); }
+
+  const enforcedBlocks = R.filter(r => r.outcome==='block' && !r.shadow);
+  const enforcedWarns = R.filter(r => r.outcome==='warn' && !r.shadow);
+  return {results:R, rank, blocked:enforcedBlocks.length>0, warns:enforcedWarns, blocks:enforcedBlocks};
+}
+
+/* ---------- step-up ---------- */
+let stepCode = null;
+function needsStepUp(o){ return o.notional > rule('size').param || (Date.now() - S.settingsChangedAt) < DAY; }
+
+/* ---------- order flow ---------- */
+let draft = null;
+function buildDraft(form){
+  const sym = form.sym.value, side = form.side.value, type = form.type.value;
+  const qn = parseFloat(form.qty.value); const limit = parseFloat(form.limit.value);
+  if(!(qn>0)) { toast('Enter a quantity above zero'); return null; }
+  if(type==='limit' && !(limit>0)) { toast('Enter a limit price'); return null; }
+  const q = M[sym]; const priceUsed = type==='limit' ? limit : (side==='buy'?q.ask:q.bid);
+  return {sym, side, type, qty:qn, limit: type==='limit'?limit:null, notional: qn*priceUsed, thesisId: form.thesis.value || null};
+}
+function runChecks(){
+  const o = buildDraft($('ticket')); if(!o) return;
+  const ev = evaluateOrder(o);
+  const order = {...o, id:'O'+(S.seq.order++), clientOrderId:uuid(), ts:Date.now(), rank:ev.rank, results:ev.results, status: ev.blocked ? 'blocked' : 'checked', mode: liveMode() ? (bridge.status.dry_run?'dry-run':'live') : 'sim'};
+  S.orders.unshift(order);
+  logAudit('check', `${order.id} ${o.side} ${qty(o.qty)} ${o.sym} ${o.type}: ${ev.blocked?'BLOCKED':'passed'} (${ev.warns.length} warn, ${ev.results.filter(r=>r.shadow).length} shadow)`, {orderId:order.id, rules:ev.results.map(r=>r.id+':'+r.outcome+(r.shadow?'(shadow)':'')).join(' ')});
+  if(ev.blocked){
+    openCase('Blocked order', `${order.id}: ${o.side} ${qty(o.qty)} ${o.sym} blocked by ${ev.blocks.map(b=>b.name).join(', ')}`, {orderId:order.id});
+    if(ev.blocks.some(b=>b.id==='velocity')) recordAnomaly('Order velocity limit hit on ' + o.sym, 'Possible runaway script or repeated clicks.');
+  }
+  prefill = {sym:o.sym, side:o.side, type:o.type, qty:o.qty, limit:o.limit, thesis:o.thesisId};
+  draft = order; save(); render();
+  if(!ev.blocked) openConfirm(order);
+}
+function openConfirm(order){
+  const ev = evaluateOrder(order);
+  const step = needsStepUp(order);
+  if(step) stepCode = String(Math.floor(100000 + Math.random()*900000));
+  const warns = ev.warns.map((w,i)=>`<label class="row small" style="margin:6px 0"><input type="checkbox" class="ack" data-i="${i}"> <span><span class="chip warn">Warn</span> <b>${esc(w.name)}</b>: ${esc(w.detail)}</span></label>`).join('');
+  openModal(`<h3>Confirm order ${order.id}</h3>
+    <div class="kv" style="margin-bottom:12px">
+      <div>Order</div><div><b>${order.side.toUpperCase()} ${qty(order.qty)} ${order.sym}</b> · ${order.type}${order.limit?' @ '+px(order.limit):''}</div>
+      <div>Estimated value</div><div>${usd(order.notional)}</div>
+      <div>Thesis</div><div>${order.thesisId ? esc(order.thesisId) : '<span class="muted">none</span>'}</div>
+      <div>Research rank</div><div>#${ev.rank} under ${STYLES[S.style].label}</div>
+      <div>Sends to</div><div>${liveMode() ? (bridge.status.dry_run ? 'Local bridge (dry run, not sent to Robinhood)' : '<b style="color:var(--bad)">Robinhood, LIVE</b>') : 'Simulated broker'}</div>
+    </div>
+    ${warns ? '<div class="small muted">Acknowledge each warning to continue:</div>'+warns : '<div class="chip pass">All enforced rules passed</div>'}
+    ${step ? `<div class="panel" style="margin-top:12px;background:var(--soft)"><b class="small">Step-up confirmation</b><div class="small muted">${order.notional > rule('size').param ? 'Order is above your size cap.' : 'Your rule settings changed in the last 24 hours.'} Enter the code from your authenticator.</div><div class="row" style="margin-top:8px"><input type="text" id="stepcode" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="width:140px"><span class="small muted">Demo authenticator: <span class="mono">${stepCode}</span></span></div></div>` : ''}
+    <div class="row" style="margin-top:16px"><button class="btn primary" onclick="confirmOrder('${order.id}', ${step})">Confirm and send</button><button class="btn" onclick="cancelDraft('${order.id}')">Cancel</button></div>`);
+}
+function cancelDraft(id){ const o = S.orders.find(x=>x.id===id); if(o && o.status==='checked'){ o.status='cancelled'; logAudit('order', `${id} cancelled before sending`, {orderId:id}); save(); } closeModal(); render(); }
+async function confirmOrder(id, step){
+  const o = S.orders.find(x=>x.id===id); if(!o) return;
+  const acks = [...document.querySelectorAll('.ack')]; if(acks.some(a=>!a.checked)){ toast('Acknowledge every warning first'); return; }
+  if(step){ const v = ($('stepcode')||{}).value; if(v !== stepCode){ toast('Step-up code does not match'); logAudit('security', `${id}: step-up code failed`, {orderId:id}); save(); return; } }
+  const ev = evaluateOrder(o); if(ev.blocked){ o.status='blocked'; o.results = ev.results; openCase('Blocked order', `${o.id}: conditions changed before confirmation`, {orderId:o.id}); save(); closeModal(); render(); return; }
+  o.confirmedAt = Date.now(); o.ackWarnings = ev.warns.map(w=>w.id); o.stepUp = !!step;
+  logAudit('confirm', `${id} confirmed${step?' with step-up':''}${o.ackWarnings.length?'; acknowledged '+o.ackWarnings.join(', '):''}`, {orderId:id});
+  closeModal();
+  await submitOrder(o);
+}
+async function submitOrder(o){
+  o.status = 'submitted'; save(); render();
+  if(liveMode()){
+    try{
+      const r = await api('POST','/api/orders', {client_order_id:o.clientOrderId, symbol:o.sym+'-USD', side:o.side, type:o.type, asset_quantity:String(o.qty), limit_price:o.limit!=null?String(o.limit):null, notional_usd:o.notional, signaldesk_order_id:o.id});
+      if(r.dry_run){ o.status='dry-run'; o.brokerId = r.order && r.order.id; o.preview = r.request_preview; logAudit('order', `${o.id} dry run: signed request built, not sent`, {orderId:o.id}); }
+      else { o.brokerId = r.order.id; o.status = mapState(r.order.state); applyLiveFill(o, r.order); logAudit('order', `${o.id} sent to Robinhood as ${o.brokerId} (${r.order.state})`, {orderId:o.id}); }
+    }catch(e){
+      o.status = 'failed'; o.error = e.message; logAudit('order', `${o.id} failed: ${e.message}`, {orderId:o.id});
+      if(e.status===401) recordAnomaly('Signature rejected (401)', 'Robinhood rejected the request signature. Check or revoke the key.');
+      if(e.status===429) logAudit('bridge','Rate limited by Robinhood (429); bridge backed off');
+      openCase('Failed order', `${o.id}: ${e.message}`, {orderId:o.id});
+    }
+    save(); render(); return;
+  }
+  // simulated broker
+  await new Promise(r=>setTimeout(r, 900));
+  o.brokerId = 'sim-' + o.clientOrderId.slice(0,8);
+  S.broker.orders[o.brokerId] = {id:o.brokerId, client_order_id:o.clientOrderId, symbol:o.sym, side:o.side, qty:o.qty, filled:0, state:'open'};
+  o.status = 'open'; logAudit('order', `${o.id} accepted by simulated broker as ${o.brokerId}`, {orderId:o.id});
+  fillOpenSimOrders(); save(); render();
+}
+function mapState(s){ return ({filled:'filled', open:'open', partially_filled:'open', canceled:'cancelled', cancelled:'cancelled', failed:'failed'})[s] || s || 'submitted'; }
+function applyLiveFill(o, bo){ if(bo.filled_asset_quantity!=null) o.filledQty = +bo.filled_asset_quantity; if(bo.average_price!=null) o.avgPrice = +bo.average_price; }
+function fillOpenSimOrders(){
+  S.orders.filter(o => o.status==='open' && o.mode==='sim').forEach(o => {
+    const q = M[o.sym]; const crosses = o.type==='market' || (o.side==='buy' ? o.limit >= q.ask : o.limit <= q.bid);
+    if(!crosses) return;
+    const price = o.type==='market' ? (o.side==='buy'?q.ask:q.bid) : o.limit;
+    if(o.side==='buy' && S.cash < o.qty*price){ return; }
+    o.status='filled'; o.filledQty=o.qty; o.avgPrice=price; o.filledAt=Date.now();
+    const sign = o.side==='buy'?1:-1;
+    S.holdings[o.sym] = +( (S.holdings[o.sym]||0) + sign*o.qty ).toFixed(10);
+    S.cash -= sign*o.qty*price;
+    const bo = S.broker.orders[o.brokerId]; if(bo){ bo.filled = o.qty; bo.state='filled'; bo.avg = price; }
+    S.broker.holdings[o.sym] = +((S.broker.holdings[o.sym]||0) + sign*o.qty).toFixed(10);
+    logAudit('fill', `${o.id} filled ${qty(o.qty)} ${o.sym} @ ${px(price)}`, {orderId:o.id});
+    const fills = S.orders.filter(x=>x.status==='filled' && x.id!==o.id).map(x=>x.notional).sort((a,b)=>a-b);
+    if(fills.length>=3){ const med = fills[Math.floor(fills.length/2)]; if(o.notional > 3*med) recordAnomaly('Order outside your normal size', `${o.id} is ${(o.notional/med).toFixed(1)}× your median order.`); }
+  });
+  save();
+}
+async function cancelOrder(id){
+  const o = S.orders.find(x=>x.id===id); if(!o) return;
+  if(o.mode!=='sim' && liveMode() && o.brokerId){ try{ await api('POST', `/api/orders/${encodeURIComponent(o.brokerId)}/cancel`); }catch(e){ toast('Cancel failed: '+e.message); return; } }
+  if(S.broker.orders[o.brokerId]) S.broker.orders[o.brokerId].state='cancelled';
+  o.status='cancelled'; logAudit('order', `${id} cancelled`, {orderId:id}); save(); render();
+}
+
+/* ---------- kill switch ---------- */
+function toggleKill(){
+  if(!S.kill){ setKill(true, 'Manual'); return; }
+  const code = String(Math.floor(100000 + Math.random()*900000));
+  openModal(`<h3>Turn trading back on?</h3><p class="muted small">Turning the kill switch off needs step-up confirmation.</p><div class="row"><input type="text" id="killcode" maxlength="6" placeholder="6-digit code" style="width:140px"><span class="small muted">Demo authenticator: <span class="mono">${code}</span></span></div><div class="row" style="margin-top:14px"><button class="btn primary" onclick="if($('killcode').value==='${code}'){setKill(false,'Manual');closeModal();}else toast('Code does not match')">Resume trading</button><button class="btn" onclick="closeModal()">Keep halted</button></div>`);
+}
+async function setKill(on, why){
+  S.kill = on;
+  logAudit('kill', `Kill switch ${on?'ON':'off'} (${why})`);
+  if(on){ for(const o of S.orders.filter(o=>o.status==='open')) await cancelOrder(o.id); }
+  save(); render(); toast(on ? 'Kill switch on: trading halted' : 'Trading resumed');
+}
+
+/* ---------- reconciliation ---------- */
+async function reconcile(){
+  const issues = [];
+  if(liveMode()){
+    for(const o of S.orders.filter(o=>o.mode==='live' && o.brokerId && ['open','submitted'].includes(o.status))){
+      try{ const bo = await api('GET', `/api/orders/${encodeURIComponent(o.brokerId)}`); const st = mapState(bo.state); if(st!==o.status){ logAudit('reconcile', `${o.id} status ${o.status} → ${st}`, {orderId:o.id}); o.status = st; } applyLiveFill(o, bo); }
+      catch(e){ issues.push(`${o.id}: could not read status (${e.message})`); }
+    }
+    await syncLiveAccount();
+  } else {
+    S.orders.filter(o=>o.mode==='sim' && o.brokerId).forEach(o => {
+      const bo = S.broker.orders[o.brokerId];
+      if(!bo) issues.push(`${o.id}: no matching broker order`);
+      else if(o.status==='filled' && Math.abs(bo.filled - o.filledQty) > 1e-12) issues.push(`${o.id}: SignalDesk shows ${qty(o.filledQty)} filled, broker shows ${qty(bo.filled)}`);
+    });
+    const known = new Set(S.orders.map(o=>o.brokerId));
+    Object.values(S.broker.orders).forEach(bo => { if(!known.has(bo.id)) issues.push(`Broker order ${bo.id} (${bo.side} ${qty(bo.qty)} ${bo.symbol}) was not created by SignalDesk`); });
+    const syms = new Set([...Object.keys(S.holdings), ...Object.keys(S.broker.holdings)]);
+    syms.forEach(s => { const a = S.holdings[s]||0, b = S.broker.holdings[s]||0; if(Math.abs(a-b) > 1e-9) issues.push(`${s} holdings: SignalDesk ${qty(a)} vs broker ${qty(b)}`); });
+  }
+  S.lastRecon = {ts:Date.now(), issues};
+  logAudit('reconcile', issues.length ? `${issues.length} break(s) found` : 'All orders and holdings match');
+  if(issues.length){
+    openCase('Reconciliation break', issues.join(' · '), {});
+    if(issues.some(i=>i.includes('not created by SignalDesk'))) recordAnomaly('Unknown broker order', 'An order exists at the broker that SignalDesk did not send. Possible key misuse: consider revoking the execution key.');
+  }
+  save(); render(); toast(issues.length ? `${issues.length} reconciliation break(s): case opened` : 'Reconciled: everything matches');
+}
+function injectMismatch(kind){
+  if(kind==='unknown'){ const id = 'sim-ext-' + rnd4(); S.broker.orders[id] = {id, client_order_id:'unknown', symbol:'SOL', side:'buy', qty:5, filled:5, state:'filled'}; S.broker.holdings.SOL = (S.broker.holdings.SOL||0)+5; toast('Injected an order SignalDesk did not send'); }
+  else { const o = S.orders.find(o=>o.status==='filled' && o.mode==='sim'); if(!o){ toast('Fill a simulated order first'); return; } S.broker.orders[o.brokerId].filled = o.filledQty/2; toast(`Broker now shows a partial fill for ${o.id}`); }
+  logAudit('demo', 'Injected reconciliation mismatch (' + kind + ')'); save(); render();
+}
+
+/* ---------- cases ---------- */
+function openCase(kind, summary, ref){
+  const c = {id:'C'+(S.seq.case++), ts:Date.now(), kind, summary, orderId:ref.orderId||null, status:'open'};
+  const o = c.orderId && S.orders.find(x=>x.id===c.orderId); if(o) c.evidence = o.results;
+  S.cases.unshift(c); logAudit('case', `${c.id} opened: ${kind}`, {orderId:c.orderId}); save();
+}
+function resolveCase(id, resolution){
+  const c = S.cases.find(x=>x.id===id); if(!c) return;
+  const note = ($('note-'+id)||{}).value || '';
+  if(resolution==='Rule tuned' && !note.trim()){ toast('Add a note saying which rule you tuned and why'); return; }
+  c.status='resolved'; c.resolution=resolution; c.note=note; c.resolvedAt=Date.now();
+  logAudit('case', `${id} resolved: ${resolution}${note?' ('+note+')':''}`, {orderId:c.orderId});
+  save(); render();
+  if(resolution==='Approved' && c.orderId){ const o = S.orders.find(x=>x.id===c.orderId); if(o){ prefill = {sym:o.sym, side:o.side, type:o.type, qty:o.qty, limit:o.limit, thesis:o.thesisId}; setTab('trade'); toast('Ticket re-filled. Fix the cause, then re-run checks.'); } }
+}
+
+/* ---------- rule settings with cooldown ---------- */
+function changeRule(id, field, value){
+  const r = rule(id); const old = r[field];
+  let looser = false;
+  if(field==='param' && id!=='quiet') looser = +value > +old;
+  if(field==='enabled') looser = !value;
+  if(field==='mode') looser = value==='shadow';
+  if(looser){
+    S.pending.push({id:uuid(), ruleId:id, field, value, from:old, effective:Date.now()+DAY, ts:Date.now()});
+    logAudit('settings', `Loosening ${r.name} ${field}: ${old} → ${value} queued (effective in 24h)`);
+    toast('Loosening a control takes effect in 24 hours');
+  } else {
+    r[field] = field==='param'||field==='param2' ? +value : value;
+    S.settingsChangedAt = Date.now();
+    logAudit('settings', `${r.name} ${field}: ${old} → ${value} (immediate)`);
+  }
+  save(); render();
+}
+function applyPending(force){
+  const now = Date.now(); let n=0;
+  S.pending = S.pending.filter(p => { if(force || p.effective <= now){ const r = rule(p.ruleId); r[p.field] = p.field==='param'?+p.value:p.value; S.settingsChangedAt = now; logAudit('settings', `${r.name} ${p.field}: ${p.from} → ${p.value} now in effect${force?' (demo fast-forward)':''}`); n++; return false; } return true; });
+  if(n){ save(); render(); }
+}
+function cancelPending(pid){ S.pending = S.pending.filter(p=>p.id!==pid); logAudit('settings','Queued change cancelled'); save(); render(); }
+
+/* ---------- keys ---------- */
+function rotateKey(id){ const k = S.keys.find(x=>x.id===id); k.created = Date.now(); k.prefix = 'rh-api-••••'+rnd4(); logAudit('key', `Key "${k.label}" rotated`); save(); render(); toast('Rotated. Upload the new public key in Robinhood and update the bridge.'); }
+function revokeKey(id){ const k = S.keys.find(x=>x.id===id); k.status='revoked'; logAudit('key', `Key "${k.label}" revoked`); if(k.scopes.includes('Place orders') && !S.kill) setKill(true, 'Execution key revoked'); save(); render(); }
+
+/* ---------- views ---------- */
+let tab = 'research', prefill = null;
+const TABS = [['research','Research'],['theses','Theses'],['trade','Trade'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
+function setTab(t){ tab = t; try{ history.replaceState(null,'','#'+t); }catch(e){} render(); }
+function renderTabs(){
+  const open = S.cases.filter(c=>c.status==='open').length; const anom = S.anomalies.filter(a=>!a.ack).length;
+  $('tabs').innerHTML = TABS.map(([id,l]) => `<button class="${tab===id?'on':''}" onclick="setTab('${id}')">${l}${id==='queue'&&open?`<span class="badge">${open}</span>`:''}${id==='account'&&anom?`<span class="badge">${anom}</span>`:''}</button>`).join('');
+}
+function updateHeader(){
+  $('k-port').textContent = usd(portfolioValue(), 0);
+  $('k-bp').textContent = usd(S.cash, 0);
+  $('k-cases').textContent = S.cases.filter(c=>c.status==='open').length;
+  const m = modeLabel(); const el = $('k-mode'); el.className = 'mode '+m.cls; el.textContent = m.text;
+  const k = $('k-kill'); k.classList.toggle('on', S.kill); k.textContent = 'Kill switch: ' + (S.kill?'ON':'off');
+}
+function render(){
+  applyPending(false);
+  renderTabs(); updateHeader();
+  const v = $('view');
+  v.innerHTML = ({research:viewResearch, theses:viewTheses, trade:viewTrade, queue:viewQueue, audit:viewAudit, account:viewAccount, rules:viewRules})[tab]();
+  if(tab==='trade') wireTicket();
+}
+function softRefresh(){
+  // refresh only live numbers without clobbering inputs
+  if(tab==='research' && !editing){ $('view').innerHTML = viewResearch(); }
+  if(tab==='trade'){ const q = $('quotebox'); if(q) q.innerHTML = quoteBox(); const l = $('orderlist'); if(l) l.innerHTML = orderTable(); }
+}
+
+let editing = false;
+function viewResearch(){
+  const ranked = computeScores();
+  const style = STYLES[S.style];
+  const src = bridge.priceSource==='robinhood' ? 'Prices: Robinhood best bid/ask via your bridge.' : 'Prices: simulated.';
+  const rows = ranked.map(r => {
+    const a = r.a, q = M[a.sym]; const [vt, vc] = verdict(r.score); const star = S.shortlist.includes(a.sym); const cmp = S.compare.includes(a.sym);
+    const e = (k, w) => editing ? `<input class="cell" data-sym="${a.sym}" data-k="${k}" value="${esc(a[k])}" style="width:${w||60}px">` : null;
+    return `<tr>
+      <td><button class="star ${star?'on':''}" onclick="toggleShort('${a.sym}')" title="Shortlist">★</button></td>
+      <td class="num">#${r.rank}</td>
+      <td><b>${a.sym}</b> <span class="muted small">${esc(a.name)}</span></td>
+      <td class="num">${px(q.mid)}</td>
+      <td><span class="scorebar"><i style="width:${r.score}%"></i></span><b>${r.score}</b></td>
+      <td class="num">${e('ret30') || (a.sym==='BTC' ? '<span class="muted">benchmark</span>' : (r.relMom>0?'+':'') + r.relMom.toFixed(0) + ' pts')}</td>
+      <td class="num">${e('vol') || a.vol+'%'}</td>
+      <td class="num">${e('dd') || a.dd+'%'}</td>
+      <td class="num">${e('liqB') || '$'+a.liqB+'B'}</td>
+      <td>${editing ? `<select data-sym="${a.sym}" data-k="unlock" class="cell">${['none','low','med','high'].map(x=>`<option ${x===a.unlock?'selected':''}>${x}</option>`).join('')}</select>` : a.unlock}</td>
+      <td>${editing ? `<select data-sym="${a.sym}" data-k="security" class="cell">${['ok','watch'].map(x=>`<option ${x===a.security?'selected':''}>${x}</option>`).join('')}</select>` : (a.security==='ok'?'<span class="muted">none</span>':'<span class="chip warn">watch</span>')}</td>
+      <td class="why"><span class="chip ${vc}">${vt}</span><div class="plus">+ ${esc(factorText(r.best.k, a, r.relMom, true))}</div><div class="minus">– ${esc(factorText(r.worst.k, a, r.relMom, false))}</div></td>
+      <td><input type="checkbox" ${cmp?'checked':''} onchange="toggleCompare('${a.sym}')" title="Compare"></td>
+    </tr>`;
+  }).join('');
+  const cmpSet = ranked.filter(r=>S.compare.includes(r.a.sym));
+  const cmp = cmpSet.length >= 2 ? `<div class="panel"><h3>Side-by-side</h3><table><tr><th>Factor (0–100, higher is better)</th>${cmpSet.map(r=>`<th class="num">${r.a.sym}</th>`).join('')}</tr>
+    ${Object.keys(FACTOR_NAMES).map(k=>`<tr><td>${FACTOR_NAMES[k]} <span class="muted small">weight ${Math.round(style.w[k]*100)}%</span></td>${cmpSet.map(r=>`<td class="num">${Math.round(r.n[k])}</td>`).join('')}</tr>`).join('')}
+    <tr><td><b>Fit score</b></td>${cmpSet.map(r=>`<td class="num"><b>${r.score}</b></td>`).join('')}</tr></table></div>` : '';
+  return `<h2>Research</h2><p class="sub">Explainable rankings for ${S.assets.length} assets. Pick a research style; each score shows what lifts it and what weakens it.</p>
+  <div class="banner">The research inputs below are sample values for the demo, not live market data. Select <b>Edit inputs</b> to replace them with your own research. ${src}</div>
+  <div class="row" style="margin-bottom:14px"><div class="seg">${Object.entries(STYLES).map(([k,s])=>`<button class="${S.style===k?'on':''}" onclick="setStyle('${k}')">${s.label}</button>`).join('')}</div>
+  <span class="muted small">Weights: ${Object.entries(style.w).map(([k,w])=>FACTOR_NAMES[k]+' '+Math.round(w*100)+'%').join(' · ')}</span>
+  <button class="btn sm right" onclick="toggleEdit()">${editing?'Done editing':'Edit inputs'}</button></div>
+  <div class="panel" style="overflow-x:auto"><table><tr><th></th><th class="num">Rank</th><th>Asset</th><th class="num">Price</th><th>Fit score</th><th class="num">${editing?'30d return %':'30d vs BTC'}</th><th class="num">Volatility</th><th class="num">90d drawdown</th><th class="num">24h volume</th><th>Unlock risk</th><th>Security</th><th>Why it ranks here</th><th>Compare</th></tr>${rows}</table></div>
+  ${cmp}`;
+}
+function setStyle(k){ S.style=k; logAudit('research', `Research style set to ${STYLES[k].label}`); save(); render(); }
+function toggleShort(s){ const i = S.shortlist.indexOf(s); i>=0 ? S.shortlist.splice(i,1) : S.shortlist.push(s); save(); render(); }
+function toggleCompare(s){ const i = S.compare.indexOf(s); if(i>=0) S.compare.splice(i,1); else { if(S.compare.length>=3) S.compare.shift(); S.compare.push(s); } save(); render(); }
+function toggleEdit(){
+  if(editing){
+    document.querySelectorAll('[data-sym][data-k]').forEach(el => { const a = S.assets.find(x=>x.sym===el.dataset.sym); const k = el.dataset.k; a[k] = (k==='unlock'||k==='security') ? el.value : parseFloat(el.value); });
+    logAudit('research','Research inputs edited'); save();
+  }
+  editing = !editing; render();
+}
+
+function viewTheses(){
+  const cards = S.theses.map(t => { const st = thesisStatus(t); const q = M[t.sym];
+    return `<div class="card"><div class="row"><h4>${t.id} · ${t.sym}</h4><span class="chip ${st.cls}">${st.label}</span><span class="muted small right">Price ${px(q?q.mid:0)}</span></div>
+      <div class="kv" style="margin-top:6px"><div>Thesis</div><div>${esc(t.statement)}</div><div>What would invalidate it</div><div>${esc(t.invalidation)}</div><div>Review by</div><div>${t.review}</div>
+      <div>Risk triggers</div><div>${(t.triggers||[]).map(tr=>`<span class="chip ${st.fired.includes(tr)?'block':'mutedc'}">price ${tr.kind} ${px(tr.price)}</span>`).join(' ') || '<span class="muted">none</span>'}</div>
+      <div>Notes</div><div><textarea rows="2" style="width:100%" onchange="setNote('${t.id}', this.value)">${esc(t.notes)}</textarea></div></div>
+      <div class="row" style="margin-top:8px"><button class="btn sm" onclick="markReviewed('${t.id}')">Mark reviewed (+30 days)</button><button class="btn sm danger" onclick="retireThesis('${t.id}')">Retire thesis</button></div></div>`; }).join('') || '<div class="empty">No theses yet. Buys are blocked without one.</div>';
+  return `<h2>Theses</h2><p class="sub">Every buy links to a thesis. A thesis that is past its review date, or whose risk trigger has fired, blocks new buys.</p>
+  <div class="grid2"><div>${cards}</div>
+  <div class="panel"><h3>New thesis</h3><form id="tform" onsubmit="addThesis(event)" style="display:grid;gap:10px">
+    <label class="f">Asset<select name="sym">${S.assets.map(a=>`<option>${a.sym}</option>`).join('')}</select></label>
+    <label class="f">Why I'd own it<textarea name="statement" rows="2" required></textarea></label>
+    <label class="f">What would invalidate it<textarea name="invalidation" rows="2" required></textarea></label>
+    <div class="row"><label class="f flex1">Review by<input type="date" name="review" required value="${new Date(Date.now()+30*DAY).toISOString().slice(0,10)}"></label>
+    <label class="f flex1">Risk trigger: price below (USD)<input type="number" step="any" name="below"></label></div>
+    <button class="btn primary">Save thesis</button></form></div></div>`;
+}
+function addThesis(e){ e.preventDefault(); const f = e.target; const t = {id:'T'+(S.seq.thesis++), sym:f.sym.value, statement:f.statement.value.trim(), invalidation:f.invalidation.value.trim(), review:f.review.value, triggers: f.below.value ? [{kind:'below', price:+f.below.value}] : [], notes:'', created:Date.now()}; S.theses.unshift(t); logAudit('thesis', `${t.id} created for ${t.sym}`); save(); render(); toast('Thesis saved'); }
+function markReviewed(id){ const t = S.theses.find(x=>x.id===id); t.review = new Date(Date.now()+30*DAY).toISOString().slice(0,10); logAudit('thesis', `${id} reviewed; next review ${t.review}`); save(); render(); }
+function retireThesis(id){ S.theses = S.theses.filter(x=>x.id!==id); logAudit('thesis', `${id} retired`); save(); render(); }
+function setNote(id, v){ const t = S.theses.find(x=>x.id===id); t.notes = v; save(); }
+
+function quoteBox(){
+  const f = $('ticket'); const sym = f ? f.sym.value : 'BTC'; const q = M[sym];
+  return `<div class="kv"><div>Bid</div><div class="mono">${px(q.bid)}</div><div>Ask</div><div class="mono">${px(q.ask)}</div><div>Spread</div><div class="mono">${q.spread.toFixed(2)}%</div><div>Held</div><div class="mono">${qty(S.holdings[sym]||0)} ${sym}</div></div>`;
+}
+function statusChip(s){ const map = {blocked:'block', failed:'block', filled:'pass', open:'info', submitted:'info', checked:'mutedc', cancelled:'mutedc', 'dry-run':'warn'}; return `<span class="chip ${map[s]||'mutedc'}">${s}</span>`; }
+function orderTable(){
+  if(!S.orders.length) return '<div class="empty">No orders yet.</div>';
+  return `<table><tr><th>Order</th><th>Time</th><th>Side</th><th class="num">Qty</th><th>Symbol</th><th>Type</th><th class="num">Value</th><th>Status</th><th>Mode</th><th></th></tr>${S.orders.slice(0,25).map(o=>`<tr>
+    <td class="mono">${o.id}</td><td class="small">${when(o.ts)}</td><td>${o.side}</td><td class="num">${qty(o.qty)}</td><td>${o.sym}</td><td>${o.type}${o.limit?' @ '+px(o.limit):''}</td><td class="num">${usd(o.notional)}</td>
+    <td>${statusChip(o.status)}</td><td class="small muted">${o.mode}</td>
+    <td>${o.status==='open'?`<button class="btn sm" onclick="cancelOrder('${o.id}')">Cancel</button>`:''}<button class="btn sm" onclick="showOrder('${o.id}')">Details</button></td></tr>`).join('')}</table>`;
+}
+function resultsTable(results){
+  return `<table class="rules"><tr><th>Rule</th><th>Result</th><th>Detail</th></tr>${results.map(r=>`<tr><td>${esc(r.name)}</td><td>${r.shadow?`<span class="chip shadow">shadow: would ${r.outcome}</span>`:`<span class="chip ${r.outcome==='skip'?'mutedc':r.outcome}">${r.outcome}</span>`}</td><td class="small">${esc(r.detail)}</td></tr>`).join('')}</table>`;
+}
+function showOrder(id){
+  const o = S.orders.find(x=>x.id===id);
+  openModal(`<h3>${o.id}</h3><div class="kv"><div>Order</div><div>${o.side} ${qty(o.qty)} ${o.sym} · ${o.type}${o.limit?' @ '+px(o.limit):''}</div><div>Status</div><div>${statusChip(o.status)}</div><div>Client order ID</div><div class="mono">${o.clientOrderId}</div><div>Broker order ID</div><div class="mono">${o.brokerId||'–'}</div><div>Thesis</div><div>${o.thesisId||'–'}</div><div>Rank at check</div><div>#${o.rank}</div>${o.avgPrice?`<div>Filled</div><div>${qty(o.filledQty)} @ ${px(o.avgPrice)}</div>`:''}${o.error?`<div>Error</div><div>${esc(o.error)}</div>`:''}</div>
+  <h3 style="margin-top:14px">Rule results</h3>${resultsTable(o.results||[])}
+  ${o.preview?`<h3 style="margin-top:14px">Signed request (dry run, not sent)</h3><pre class="code">${esc(JSON.stringify(o.preview,null,2))}</pre>`:''}
+  <div class="row" style="margin-top:14px"><button class="btn" onclick="closeModal()">Close</button></div>`);
+}
+function viewTrade(){
+  const lastChecked = S.orders[0];
+  return `<h2>Trade</h2><p class="sub">Orders run through the risk rules, then your confirmation, then the broker. ${liveMode()? (bridge.status.dry_run?'Bridge is in <b>dry-run</b>: requests are signed but not sent.':'<b style="color:var(--bad)">Bridge is LIVE: confirmed orders go to Robinhood.</b>') : 'Simulation mode: nothing reaches Robinhood.'}</p>
+  ${S.kill?'<div class="banner bad"><b>Kill switch is on.</b> Every order will be blocked. Turn it off from the header.</div>':''}
+  <div class="grid2">
+    <div class="panel"><h3>Order ticket</h3><form id="ticket" onsubmit="event.preventDefault();runChecks()" style="display:grid;gap:10px">
+      <div class="row"><label class="f flex1">Asset<select name="sym">${S.assets.map(a=>`<option>${a.sym}</option>`).join('')}</select></label>
+      <label class="f flex1">Side<select name="side"><option value="buy">Buy</option><option value="sell">Sell</option></select></label>
+      <label class="f flex1">Type<select name="type"><option value="limit">Limit</option><option value="market">Market</option></select></label></div>
+      <div class="row"><label class="f flex1">Quantity (asset units)<input type="number" step="any" name="qty" required></label>
+      <label class="f flex1">Limit price (USD)<input type="number" step="any" name="limit"></label></div>
+      <label class="f">Linked thesis<select name="thesis"></select></label>
+      <div class="row"><span class="muted small" id="est">Estimated value: –</span><button class="btn primary right">Run pre-trade checks</button></div>
+    </form></div>
+    <div class="panel"><h3>Live quote</h3><div id="quotebox">${quoteBox()}</div>
+    ${lastChecked && lastChecked.results ? `<h3 style="margin-top:14px">Last check: ${lastChecked.id} ${statusChip(lastChecked.status)}</h3>${resultsTable(lastChecked.results)}`:''}</div>
+  </div>
+  <div class="panel"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Orders</h3><button class="btn sm right" onclick="reconcile()">Reconcile now</button>${!liveMode()?`<button class="btn sm" onclick="injectMismatch('unknown')">Demo: inject unknown broker order</button><button class="btn sm" onclick="injectMismatch('partial')">Demo: inject partial fill</button>`:''}</div>
+  ${S.lastRecon?`<div class="small muted" style="margin-bottom:8px">Last reconciled ${when(S.lastRecon.ts)}: ${S.lastRecon.issues.length?S.lastRecon.issues.length+' break(s), see Review queue':'all matched'}</div>`:''}
+  <div id="orderlist" style="overflow-x:auto">${orderTable()}</div></div>`;
+}
+function wireTicket(){
+  const f = $('ticket'); if(!f) return;
+  const fillTheses = () => { const ts = S.theses.filter(t=>t.sym===f.sym.value); f.thesis.innerHTML = `<option value="">None</option>` + ts.map(t=>`<option value="${t.id}">${t.id}: ${esc(t.statement.slice(0,60))} (${thesisStatus(t).label})</option>`).join(''); if(ts.length) f.thesis.value = ts[0].id; };
+  const upd = () => { const q = M[f.sym.value]; f.limit.disabled = f.type.value==='market'; const p = f.type.value==='limit' && f.limit.value ? +f.limit.value : (f.side.value==='buy'?q.ask:q.bid); const n = (+f.qty.value||0)*p; $('est').textContent = 'Estimated value: ' + usd(n, 2); $('quotebox').innerHTML = quoteBox(); };
+  f.sym.onchange = () => { fillTheses(); const q = M[f.sym.value]; f.limit.value = +(f.side.value==='buy'?q.ask:q.bid).toPrecision(6); upd(); };
+  f.side.onchange = f.sym.onchange; f.type.onchange = upd; f.qty.oninput = upd; f.limit.oninput = upd;
+  if(prefill){ f.sym.value = prefill.sym; f.side.value = prefill.side; f.type.value = prefill.type; f.qty.value = prefill.qty; fillTheses(); if(prefill.limit) f.limit.value = prefill.limit; if(prefill.thesis) f.thesis.value = prefill.thesis; prefill = null; upd(); }
+  else { fillTheses(); const q = M[f.sym.value]; f.limit.value = +q.ask.toPrecision(6); upd(); }
+}
+
+function viewQueue(){
+  const open = S.cases.filter(c=>c.status==='open'), done = S.cases.filter(c=>c.status!=='open');
+  const card = c => `<div class="card"><div class="row"><h4>${c.id} · ${esc(c.kind)}</h4>${c.status==='open'?'<span class="chip block">open</span>':`<span class="chip pass">${esc(c.resolution)}</span>`}<span class="small muted right">${when(c.ts)}</span></div>
+    <div class="small" style="margin:6px 0">${esc(c.summary)}</div>
+    ${c.evidence?`<details><summary class="small muted" style="cursor:pointer">Evidence: rule results for ${c.orderId}</summary>${resultsTable(c.evidence)}</details>`:''}
+    ${c.status==='open'?`<div class="row" style="margin-top:8px"><input type="text" id="note-${c.id}" placeholder="Resolution note" class="flex1"><button class="btn sm" onclick="resolveCase('${c.id}','Approved')">Approve and re-ticket</button><button class="btn sm" onclick="resolveCase('${c.id}','Cancelled')">Cancel</button><button class="btn sm" onclick="resolveCase('${c.id}','Rule tuned')">Rule tuned</button></div>`:(c.note?`<div class="small muted">Note: ${esc(c.note)}</div>`:'')}</div>`;
+  return `<h2>Review queue</h2><p class="sub">Blocked orders, failed orders and reconciliation breaks open a case with the evidence attached. Resolutions are logged.</p>
+  <div class="grid2"><div><h3 class="small muted">OPEN (${open.length})</h3>${open.map(card).join('')||'<div class="empty">Nothing to review.</div>'}</div>
+  <div><h3 class="small muted">RESOLVED (${done.length})</h3>${done.slice(0,20).map(card).join('')||'<div class="empty">No resolved cases yet.</div>'}</div></div>`;
+}
+
+let auditFilter = 'all';
+function viewAudit(){
+  const types = ['all', ...new Set(S.audit.map(a=>a.type))];
+  const rows = S.audit.filter(a=>auditFilter==='all'||a.type===auditFilter).slice(0,300);
+  return `<h2>Audit log</h2><p class="sub">Append-only record of checks, confirmations, orders, fills, cases, settings and key events.</p>
+  <div class="row" style="margin-bottom:12px"><select onchange="auditFilter=this.value;render()">${types.map(t=>`<option ${t===auditFilter?'selected':''}>${t}</option>`).join('')}</select><span class="muted small">${S.audit.length} entries</span><button class="btn sm right" onclick="copyCsv()">Copy as CSV</button></div>
+  <div class="panel" style="overflow-x:auto">${rows.length?`<table><tr><th>Time</th><th>Type</th><th>Order</th><th>Detail</th></tr>${rows.map(a=>`<tr><td class="small" style="white-space:nowrap">${when(a.ts)}</td><td><span class="chip mutedc">${esc(a.type)}</span></td><td class="mono">${a.orderId||''}</td><td class="small">${esc(a.detail)}${a.rules?`<div class="mono muted" style="font-size:11px">${esc(a.rules)}</div>`:''}</td></tr>`).join('')}</table>`:'<div class="empty">No events yet.</div>'}</div>`;
+}
+async function copyCsv(){
+  const q = s => '"' + String(s==null?'':s).replace(/"/g,'""') + '"';
+  const csv = ['timestamp,type,order_id,detail,rules', ...S.audit.map(a=>[new Date(a.ts).toISOString(), a.type, a.orderId||'', a.detail, a.rules||''].map(q).join(','))].join('\n');
+  try{ await navigator.clipboard.writeText(csv); toast('Audit log copied as CSV'); }catch(e){ openModal(`<h3>Audit log CSV</h3><p class="small muted">Copy the text below.</p><textarea style="width:100%;height:260px" class="mono">${esc(csv)}</textarea><div class="row" style="margin-top:10px"><button class="btn" onclick="closeModal()">Close</button></div>`); }
+}
+
+function viewAccount(){
+  const anoms = S.anomalies.slice(0,15);
+  const keyRows = S.keys.map(k => { const rotateBy = k.created + 90*DAY; const overdue = rotateBy < Date.now();
+    return `<tr><td><b>${esc(k.label)}</b><div class="mono muted">${k.prefix}</div></td><td class="small">${k.scopes.join(', ')}</td><td class="small">${new Date(k.created).toLocaleDateString()}</td><td class="small">${new Date(rotateBy).toLocaleDateString()} ${overdue?'<span class="chip block">overdue</span>':''}</td><td>${k.status==='active'?'<span class="chip pass">active</span>':'<span class="chip block">revoked</span>'}</td>
+    <td>${k.status==='active'?`<button class="btn sm" onclick="rotateKey('${k.id}')">Rotate</button> <button class="btn sm danger" onclick="revokeKey('${k.id}')">Revoke</button>`:''}</td></tr>`; }).join('');
+  const b = bridge.status;
+  const bridgePanel = ON_BRIDGE ? `<div class="kv"><div>Bridge</div><div>${b ? (b.configured?'<span class="chip pass">connected</span>':'<span class="chip warn">no API key configured</span>') : 'checking…'}</div>
+    ${b&&b.configured?`<div>API key</div><div class="mono">${esc(b.api_key_masked)}</div><div>Mode</div><div>${b.dry_run?'<span class="chip warn">dry run</span> requests are signed but not sent':'<span class="chip block">LIVE</span> orders reach Robinhood'}</div><div>Order endpoint</div><div class="mono">${esc(b.order_path)}</div><div>Bridge limits</div><div class="small">Max order ${usd(b.max_order_usd,0)} · symbols ${esc((b.allowed_symbols||[]).join(', '))} · ${b.rate_limit_per_min}/min</div><div>Signature failures</div><div>${b.auth_failures||0}</div>`:''}
+    </div><div class="row" style="margin-top:10px"><label class="row small"><input type="checkbox" ${S.forceSim?'checked':''} onchange="S.forceSim=this.checked;save();location.reload()"> Force simulation mode</label></div>`
+    : `<div class="small muted">This page is running hosted, so it can only simulate. To trade through Robinhood, run the SignalDesk bridge on your computer (<span class="mono">python bridge.py</span>) and open the address it prints. The bridge keeps your private key on your machine and signs each request.</div>`;
+  return `<h2>Account & keys</h2><p class="sub">The API key can trade without a login, so it gets the strictest controls: least privilege, rotation, revocation and anomaly alerts.</p>
+  <div class="grid2"><div class="panel"><h3>Robinhood connection</h3>${bridgePanel}</div>
+  <div class="panel"><h3>Anomaly alerts</h3>${anoms.length?anoms.map((a,i)=>`<div class="card" style="padding:9px"><div class="row"><b class="small">${esc(a.title)}</b>${a.ack?'<span class="chip mutedc">acknowledged</span>':`<button class="btn sm right" onclick="ackAnomaly(${i})">Acknowledge</button>`}</div><div class="small muted">${when(a.ts)} · ${esc(a.detail)}</div></div>`).join(''):'<div class="empty">No anomalies.</div>'}</div></div>
+  <div class="panel" style="overflow-x:auto"><h3>API keys</h3><p class="small muted" style="margin-top:0">Use two keys: a read-only key for research and an execution key that only the bridge holds. Rotate every 90 days. Revoking the execution key turns on the kill switch. ${ON_BRIDGE?'':'Keys here are simulated.'}</p>
+  <table><tr><th>Key</th><th>Permissions</th><th>Created</th><th>Rotate by</th><th>Status</th><th></th></tr>${keyRows}</table></div>`;
+}
+
+function ackAnomaly(i){ const a = S.anomalies[i]; if(!a) return; a.ack = true; logAudit('anomaly', 'Acknowledged: ' + a.title); save(); render(); }
+function viewRules(){
+  const rows = S.rules.map(r => `<tr><td><b>${esc(r.name)}</b><div class="small muted">${esc(r.desc||r.unit||'')}</div></td><td><span class="chip mutedc">${r.cat}</span></td>
+    <td>${r.param!=null?`<input type="number" step="any" class="cell" value="${r.param}" onchange="changeRule('${r.id}','param',this.value)">${r.id==='quiet'?` to <input type="number" class="cell" value="${r.param2}" onchange="changeRule('quiet','param2',this.value)">`:''}<div class="small muted">${esc(r.unit)}</div>`:'<span class="muted small">no threshold</span>'}</td>
+    <td>${r.locked?'<span class="chip info">always on</span>':`<div class="seg"><button class="${r.mode==='enforce'?'on':''}" onclick="changeRule('${r.id}','mode','enforce')">Enforce</button><button class="${r.mode==='shadow'?'on':''}" onclick="changeRule('${r.id}','mode','shadow')">Shadow</button></div>`}</td>
+    <td>${r.locked?'':`<label class="row small"><input type="checkbox" ${r.enabled?'checked':''} onchange="changeRule('${r.id}','enabled',this.checked)"> enabled</label>`}</td>
+    <td class="small">${ruleStats(r.id)}</td></tr>`).join('');
+  const pend = S.pending.map(p=>`<div class="row small" style="margin:4px 0"><span>${esc(rule(p.ruleId).name)}: ${({param:'threshold',param2:'end hour',enabled:'enabled',mode:'mode'})[p.field]||esc(p.field)} ${esc(String(p.from))} → <b>${esc(String(p.value))}</b>, effective ${when(p.effective)}</span><button class="btn sm right" onclick="cancelPending('${p.id}')">Cancel</button></div>`).join('');
+  return `<h2>Risk rules</h2><p class="sub">Rules are configuration, not code. Tightening applies at once; loosening waits 24 hours, so a hijacked session can't quietly remove a control. New rules start in shadow mode: they log what they would do without blocking.</p>
+  ${S.pending.length?`<div class="panel"><div class="row"><h3 style="margin:0">Queued changes</h3><button class="btn sm right" onclick="applyPending(true)">Demo: fast-forward 24h</button></div>${pend}</div>`:''}
+  <div class="panel" style="overflow-x:auto"><table><tr><th>Rule</th><th>Category</th><th>Threshold</th><th>Mode</th><th>Status</th><th>Last 50 checks</th></tr>${rows}</table></div>
+  <p class="small muted">"Last 50 checks" counts how often each rule warned or blocked, including shadow results. Use it with resolved cases to judge false positives before you enforce a rule.</p>`;
+}
+function ruleStats(id){
+  const recent = S.orders.slice(0,50).filter(o=>o.results);
+  let w=0,b=0,s=0; recent.forEach(o => { const r = o.results.find(x=>x.id===id); if(!r) return; if(r.shadow) s++; else if(r.outcome==='warn') w++; else if(r.outcome==='block') b++; });
+  return recent.length ? `${b} block · ${w} warn${s?` · ${s} shadow`:''}` : '<span class="muted">no checks yet</span>';
+}
+
+/* ---------- boot ---------- */
+(function boot(){
+  const h = (location.hash||'').slice(1); if(TABS.some(t=>t[0]===h)) tab = h;
+  window.addEventListener('hashchange', () => { const h2 = location.hash.slice(1); if(TABS.some(t=>t[0]===h2) && h2!==tab){ tab = h2; render(); } });
+  $('modal').addEventListener('click', e => { if(e.target.id==='modal') closeModal(); });
+  initMarket(); render(); initBridge();
+  setInterval(tickSim, 4000);
+})();
+</script>
+</body>
+</html>
