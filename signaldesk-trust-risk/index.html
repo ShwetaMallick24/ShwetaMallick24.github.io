@@ -779,9 +779,11 @@ const SCAM_RULES = [
   {id:'remote', level:'critical', label:'Asks for remote access or an install', why:'Remote-access apps let a scammer control your device and accounts.',
    re:/\b(anydesk|teamviewer|remote access|screen ?share|share your screen|install (?:this|the) app|download (?:this|the) app|browser extension)\b/i},
   {id:'recovery', level:'critical', label:'Recovery or "release fee" scam', why:'Promises to get lost crypto back, or fees to "unlock" a withdrawal, are scams that target people who were already hit once.',
-   re:/\b(recover (?:your )?(?:lost|stolen) (?:crypto|funds|coins|assets|money)|fund recovery|recovery (?:service|agent|expert)|upfront fee|fee upfront|release fee|unlock fee|pay (?:a )?(?:tax|fee) to withdraw)\b/i},
+   re:/\b(recover (?:your )?(?:lost|stolen) (?:crypto|funds|coins|assets|money)|fund recovery|recovery (?:service|agent|expert)|upfront fee|fee upfront|release fee|unlock fee|pay (?:a )?(?:tax|fee) to withdraw|unclaimed (?:bitcoin|btc|crypto|funds|coins)|forgotten (?:bitcoin|btc|crypto|wallet)|dormant (?:wallet|account)|processing fee|get it (?:all )?back for)\b/i},
+  {id:'notme', level:'warn', label:'"Wasn\'t you?" alert', why:'Fake security alerts say something happened on your account so you panic and use their link or number. Check inside the official app instead.',
+   re:/\b(if (?:this|it) was not you|if (?:this|it) wasn'?t you|wasn'?t you\?|if you did(?: not|n'?t) (?:request|authori[sz]e|make)|not you\?)/i},
   {id:'urgent', level:'warn', label:'Pressure or threats', why:'Scammers create panic so you act before you think. Real notices let you check in the official app.',
-   re:/\b(urgent|immediately|right away|within (?:24|48|12) hours|act now|final (?:notice|warning)|suspend(?:ed)?|locked|frozen|will be (?:closed|terminated|deleted)|unusual activity|unauthori[sz]ed (?:login|access|withdrawal)|verify (?:now|your account|immediately))\b/i},
+   re:/\b(urgent(?:ly)?|immediately|right away|within (?:24|48|12) hours|act now|final (?:notice|warning)|suspend(?:ed)?|locked|frozen|will be (?:closed|terminated|deleted)|unusual activity|unauthori[sz]ed (?:login|access|withdrawal)|verify (?:now|your account|immediately))\b/i},
   {id:'toogood', level:'warn', label:'Too good to be true', why:'Guaranteed returns, giveaways and "send 1, get 2" offers are classic scams.',
    re:/\b(guaranteed|double your|2x your|risk[- ]free|100% (?:profit|return)|giveaway|free (?:btc|eth|crypto|usdt)|airdrop|claim your (?:reward|bonus)|send \d+(?:\.\d+)? (?:btc|eth|usdt)? ?(?:and|to) (?:get|receive))\b/i},
   {id:'offplatform', level:'warn', label:'Moves you off official channels', why:'Real support stays in the official app or website. Scammers move you to WhatsApp, Telegram or a phone line they control.',
@@ -794,7 +796,12 @@ function isOfficial(host){ return OFFICIAL_DOMAINS.some(d => host === d || host.
 function analyzeMessage(text, sender){
   const findings = [];
   const add = (level, label, why, evidence) => findings.push({level, label, why, evidence});
-  SCAM_RULES.forEach(r => { const m = text.match(r.re); if(m) add(r.level, r.label, r.why, m[0]); });
+  const saysDontShare = /\b(do not|don'?t|never) share\b/i.test(text);
+  SCAM_RULES.forEach(r => { const m = text.match(r.re); if(!m) return;
+    if(r.id==='secret' && saysDontShare) { add('info','Mentions a code, but says not to share it','Real login-code texts look like this. It only becomes a scam if someone then asks you for the code, or gives you a number to call.', m[0]); return; }
+    add(r.level, r.label, r.why, m[0]); });
+  const phone = (text.match(/(?:\+?\d[\d\s().-]{7,}\d)/g) || []).find(x => x.replace(/\D/g,'').length >= 9 && !/^\d{4,8}$/.test(x.trim()));
+  if(phone && /\b(call|ring|dial|contact|reach|phone|secure your account|text)\b/i.test(text)) add('critical','Asks you to call a phone number','Exchanges don\'t send phone numbers in texts for you to call. A number in a "security alert" goes straight to the scammer.', phone.trim());
   // emails inside the message and the sender field
   const emailRe = /[\w.+-]+@((?:[\w-]+\.)+[a-z]{2,})/gi;
   const emails = [...(text + ' ' + (sender||'')).matchAll(emailRe)].map(m => ({addr:m[0], host:m[1].toLowerCase()}));
