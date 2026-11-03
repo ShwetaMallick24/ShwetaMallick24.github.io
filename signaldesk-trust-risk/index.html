@@ -801,7 +801,9 @@ function analyzeMessage(text, sender){
     if(r.id==='secret' && saysDontShare) { add('info','Mentions a code, but says not to share it','Real login-code texts look like this. It only becomes a scam if someone then asks you for the code, or gives you a number to call.', m[0]); return; }
     add(r.level, r.label, r.why, m[0]); });
   const phone = (text.match(/(?:\+?\d[\d\s().-]{7,}\d)/g) || []).find(x => x.replace(/\D/g,'').length >= 9 && !/^\d{4,8}$/.test(x.trim()));
-  if(phone && /\b(call|ring|dial|contact|reach|phone|secure your account|text)\b/i.test(text)) add('critical','Asks you to call a phone number','Exchanges don\'t send phone numbers in texts for you to call. A number in a "security alert" goes straight to the scammer.', phone.trim());
+  const alertContext = /\b(withdrawal|withdraw|signed in|sign-in|log ?in|login|unauthori[sz]ed|verif(?:y|ication)|secure your account|suspend(?:ed)?|locked|frozen|transaction|transfer|api key|2fa|security|support team|cancel|not you|wasn'?t you|didn'?t (?:request|authori[sz]e))\b|\bref[:/ #]/i.test(text);
+  if(phone && alertContext && /\b(call|ring|dial|contact|reach|phone|secure your account|text)\b/i.test(text)) add('critical','Asks you to call a phone number','Exchanges don\'t send phone numbers in security alerts for you to call. A number in an "alert" goes straight to the scammer.', phone.trim());
+  else if(phone) add('info','Contains a phone number','Not a red flag on its own. Only call numbers you already know, not ones from an unexpected message.', phone.trim());
   // emails inside the message and the sender field
   const emailRe = /[\w.+-]+@((?:[\w-]+\.)+[a-z]{2,})/gi;
   const emails = [...(text + ' ' + (sender||'')).matchAll(emailRe)].map(m => ({addr:m[0], host:m[1].toLowerCase()}));
@@ -829,6 +831,8 @@ function analyzeMessage(text, sender){
     if(FREE_MAIL.includes(e.host) && brand) add('critical','Support from a personal email','A company would not contact you from a free email account like ' + e.host + '.', e.addr);
     else if(brand) add('critical','Look-alike email address','The sender uses a company name but not the company\'s real domain.', e.addr);
   });
+  const pointsToApp = /\b(open|check|review|go to)\b[^.]{0,40}\b(app|official website)\b/i.test(text);
+  if(pointsToApp && !phone && hosts.length === 0) findings.forEach(f => { if(f.label === 'Pressure or threats'){ f.level = 'info'; f.why = 'Alarming words, but the message sends you to the official app rather than a link or number, which is what real notices do. Still check in the app yourself.'; } });
   const crit = findings.filter(f=>f.level==='critical').length, warn = findings.filter(f=>f.level==='warn').length;
   let verdict, cls;
   if(crit > 0 || warn >= 2) { verdict = 'Likely scam'; cls = 'block'; }
