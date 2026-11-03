@@ -177,6 +177,7 @@ function rnd4(){return Math.random().toString(16).slice(2,6)}
 
 /* ---------- state ---------- */
 let S = load();
+S.scamChecks = S.scamChecks || [];
 function load(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s = JSON.parse(raw); if(s && s.v===1) return s; } }catch(e){} return defaultState(); }
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
 function resetDemo(){ openModal(`<h3>Reset demo data?</h3><p class="muted">This clears theses, orders, cases, the audit log and rule settings in this browser.</p><div class="row"><button class="btn primary" onclick="S=defaultState();save();closeModal();initMarket();render();toast('Demo data reset')">Reset</button><button class="btn" onclick="closeModal()">Cancel</button></div>`); }
@@ -573,7 +574,7 @@ function revokeKey(id){ const k = S.keys.find(x=>x.id===id); k.status='revoked';
 
 /* ---------- views ---------- */
 let tab = 'research', prefill = null;
-const TABS = [['research','Research'],['theses','Theses'],['trade','Trade'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
+const TABS = [['research','Research'],['theses','Theses'],['trade','Trade'],['scam','Scam check'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
 function setTab(t){ tab = t; try{ history.replaceState(null,'','#'+t); }catch(e){} render(); }
 function renderTabs(){
   const open = S.cases.filter(c=>c.status==='open').length; const anom = S.anomalies.filter(a=>!a.ack).length;
@@ -590,7 +591,7 @@ function render(){
   applyPending(false);
   renderTabs(); updateHeader();
   const v = $('view');
-  v.innerHTML = ({research:viewResearch, theses:viewTheses, trade:viewTrade, queue:viewQueue, audit:viewAudit, account:viewAccount, rules:viewRules})[tab]();
+  v.innerHTML = ({research:viewResearch, theses:viewTheses, trade:viewTrade, queue:viewQueue, audit:viewAudit, account:viewAccount, rules:viewRules, scam:viewScam})[tab]();
   if(tab==='trade') wireTicket();
 }
 function softRefresh(){
@@ -757,6 +758,7 @@ function viewAccount(){
     </div><div class="row" style="margin-top:10px"><label class="row small"><input type="checkbox" ${S.forceSim?'checked':''} onchange="S.forceSim=this.checked;save();location.reload()"> Force simulation mode</label></div>`
     : `<div class="small muted">This page is running hosted, so it can only simulate. To trade through Robinhood, run the SignalDesk bridge on your computer (<span class="mono">python bridge.py</span>) and open the address it prints. The bridge keeps your private key on your machine and signs each request.</div>`;
   return `<h2>Account & keys</h2><p class="sub">The API key can trade without a login, so it gets the strictest controls: least privilege, rotation, revocation and anomaly alerts.</p>
+  <div class="banner info">Got a message saying your account is locked or your funds are at risk? <a href="#scam">Check it in Scam check</a> before you click anything.</div>
   <div class="grid2"><div class="panel"><h3>Robinhood connection</h3>${bridgePanel}</div>
   <div class="panel"><h3>Anomaly alerts</h3>${anoms.length?anoms.map((a,i)=>`<div class="card" style="padding:9px"><div class="row"><b class="small">${esc(a.title)}</b>${a.ack?'<span class="chip mutedc">acknowledged</span>':`<button class="btn sm right" onclick="ackAnomaly(${i})">Acknowledge</button>`}</div><div class="small muted">${when(a.ts)} · ${esc(a.detail)}</div></div>`).join(''):'<div class="empty">No anomalies.</div>'}</div></div>
   <div class="panel" style="overflow-x:auto"><h3>API keys</h3><p class="small muted" style="margin-top:0">Use two keys: a read-only key for research and an execution key that only the bridge holds. Rotate every 90 days. Revoking the execution key turns on the kill switch. ${ON_BRIDGE?'':'Keys here are simulated.'}</p>
@@ -764,6 +766,111 @@ function viewAccount(){
 }
 
 function ackAnomaly(i){ const a = S.anomalies[i]; if(!a) return; a.ack = true; logAudit('anomaly', 'Acknowledged: ' + a.title); save(); render(); }
+/* ---------- scam check (rule-based, runs entirely in the browser) ---------- */
+const OFFICIAL_DOMAINS = ['binance.us','binance.com','robinhood.com','coinbase.com','kraken.com','gemini.com','metamask.io','ledger.com','trezor.io'];
+const BRANDS = ['binance','robinhood','coinbase','kraken','gemini','metamask','ledger','trezor'];
+const SHORTENERS = ['bit.ly','tinyurl.com','t.co','goo.gl','is.gd','cutt.ly','rb.gy','ow.ly','shorturl.at','tiny.cc','t.ly'];
+const FREE_MAIL = ['gmail.com','outlook.com','hotmail.com','yahoo.com','proton.me','protonmail.com','icloud.com','aol.com','gmx.com','mail.com'];
+const SCAM_RULES = [
+  {id:'secret', level:'critical', label:'Asks for a secret', why:'No real exchange or wallet will ever ask for your recovery phrase, private key, 2FA code or password.',
+   re:/\b(seed phrase|recovery phrase|secret phrase|private key|12[- ]word|24[- ]word|2fa code|two[- ]factor code|verification code|one[- ]time (?:code|password)|otp|authenticator code|security code|your password)\b/i},
+  {id:'move', level:'critical', label:'Asks you to move funds', why:'"Move your funds to a safe wallet" is the most common way people lose crypto. Exchanges never ask this.',
+   re:/\b(safe wallet|secure wallet|protected wallet|safety wallet|transfer (?:all )?your (?:funds|assets|crypto|coins)|move your (?:funds|assets|crypto|coins)|migrate your (?:funds|wallet|assets)|send (?:your )?(?:funds|crypto|btc|eth|usdt|coins) to|whitelist (?:this|the following) address|new wallet address)\b/i},
+  {id:'remote', level:'critical', label:'Asks for remote access or an install', why:'Remote-access apps let a scammer control your device and accounts.',
+   re:/\b(anydesk|teamviewer|remote access|screen ?share|share your screen|install (?:this|the) app|download (?:this|the) app|browser extension)\b/i},
+  {id:'recovery', level:'critical', label:'Recovery or "release fee" scam', why:'Promises to get lost crypto back, or fees to "unlock" a withdrawal, are scams that target people who were already hit once.',
+   re:/\b(recover (?:your )?(?:lost|stolen) (?:crypto|funds|coins|assets|money)|fund recovery|recovery (?:service|agent|expert)|upfront fee|fee upfront|release fee|unlock fee|pay (?:a )?(?:tax|fee) to withdraw)\b/i},
+  {id:'urgent', level:'warn', label:'Pressure or threats', why:'Scammers create panic so you act before you think. Real notices let you check in the official app.',
+   re:/\b(urgent|immediately|right away|within (?:24|48|12) hours|act now|final (?:notice|warning)|suspend(?:ed)?|locked|frozen|will be (?:closed|terminated|deleted)|unusual activity|unauthori[sz]ed (?:login|access|withdrawal)|verify (?:now|your account|immediately))\b/i},
+  {id:'toogood', level:'warn', label:'Too good to be true', why:'Guaranteed returns, giveaways and "send 1, get 2" offers are classic scams.',
+   re:/\b(guaranteed|double your|2x your|risk[- ]free|100% (?:profit|return)|giveaway|free (?:btc|eth|crypto|usdt)|airdrop|claim your (?:reward|bonus)|send \d+(?:\.\d+)? (?:btc|eth|usdt)? ?(?:and|to) (?:get|receive))\b/i},
+  {id:'offplatform', level:'warn', label:'Moves you off official channels', why:'Real support stays in the official app or website. Scammers move you to WhatsApp, Telegram or a phone line they control.',
+   re:/\b(whatsapp|telegram|signal app|call (?:us|this number|our hotline)|text (?:us|back)|reply with|dm (?:us|me)|contact (?:our )?(?:support|agent) (?:on|at|via))\b/i},
+  {id:'impersonate', level:'info', label:'Claims to be a company or support team', why:'Anyone can say they are support. Check by opening the official app yourself, not by using the message.',
+   re:/\b(binance|robinhood|coinbase|kraken|gemini|metamask|ledger|trezor|support team|security team|compliance team|account (?:team|department))\b/i}
+];
+function scamNorm(s){ return s.toLowerCase().replace(/0/g,'o').replace(/1/g,'l').replace(/3/g,'e').replace(/5/g,'s').replace(/rn/g,'m').replace(/vv/g,'w'); }
+function isOfficial(host){ return OFFICIAL_DOMAINS.some(d => host === d || host.endsWith('.' + d)); }
+function analyzeMessage(text, sender){
+  const findings = [];
+  const add = (level, label, why, evidence) => findings.push({level, label, why, evidence});
+  SCAM_RULES.forEach(r => { const m = text.match(r.re); if(m) add(r.level, r.label, r.why, m[0]); });
+  // emails inside the message and the sender field
+  const emailRe = /[\w.+-]+@((?:[\w-]+\.)+[a-z]{2,})/gi;
+  const emails = [...(text + ' ' + (sender||'')).matchAll(emailRe)].map(m => ({addr:m[0], host:m[1].toLowerCase()}));
+  const textNoEmails = text.replace(emailRe, ' ');
+  // links
+  const urlRe = /\b((?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^\s<>"')]*)?)/gi;
+  const hosts = [];
+  [...textNoEmails.matchAll(urlRe)].forEach(m => {
+    let u = m[1]; let host = u.replace(/^https?:\/\//i,'').split(/[\/:?#]/)[0].toLowerCase();
+    if(host.includes('@')) { add('critical','Hidden link destination','The link uses an "@" trick to hide where it really goes.', u); host = host.split('@').pop(); }
+    if(!hosts.includes(host)) hosts.push(host);
+  });
+  if(/https?:\/\/\d{1,3}(?:\.\d{1,3}){3}/i.test(text)) add('critical','Link to a raw IP address','Real companies use their own domain names, not number addresses.', (text.match(/https?:\/\/\d{1,3}(?:\.\d{1,3}){3}\S*/i)||[''])[0]);
+  hosts.forEach(host => {
+    if(isOfficial(host)){ add('ok','Link points to an official domain', 'Still safer to open the official app yourself than to tap a link in a message.', host); return; }
+    if(host.startsWith('xn--') || host.includes('.xn--')) { add('critical','Disguised link (special characters)','The address uses look-alike characters to imitate a real site.', host); return; }
+    if(SHORTENERS.includes(host)) { add('warn','Shortened link','Short links hide the real destination.', host); return; }
+    const n = scamNorm(host); const brand = BRANDS.find(b => n.includes(b));
+    if(brand) add('critical','Look-alike website', `This address uses "${brand}" in its name but is not the official site.`, host);
+    else add('info','Unknown website','This link isn\'t on the list of official sites. Don\'t enter any details there.', host);
+  });
+  emails.forEach(e => {
+    if(isOfficial(e.host)) return;
+    const brand = BRANDS.find(b => scamNorm(e.host).includes(b) || scamNorm(e.addr).includes(b) || (sender||'').toLowerCase().includes(b));
+    if(FREE_MAIL.includes(e.host) && brand) add('critical','Support from a personal email','A company would not contact you from a free email account like ' + e.host + '.', e.addr);
+    else if(brand) add('critical','Look-alike email address','The sender uses a company name but not the company\'s real domain.', e.addr);
+  });
+  const crit = findings.filter(f=>f.level==='critical').length, warn = findings.filter(f=>f.level==='warn').length;
+  let verdict, cls;
+  if(crit > 0 || warn >= 2) { verdict = 'Likely scam'; cls = 'block'; }
+  else if(warn > 0) { verdict = 'Suspicious'; cls = 'warn'; }
+  else { verdict = 'No red flags found'; cls = 'pass'; }
+  return {verdict, cls, findings};
+}
+const SCAM_EXAMPLES = [
+  {name:'Account locked', sender:'Robinhood Security <security@robinhood-verify-support.com>', text:'URGENT: Unusual activity was detected on your Robinhood crypto account. Your account will be suspended within 24 hours. Verify now at https://robinhood-secure-login.co/verify and reply with the 6-digit verification code we just sent you.'},
+  {name:'Safe wallet', sender:'+1 (555) 010-2299', text:'Hi, this is Binance support. After the recent security incident, your funds are at risk. Please move your funds to a safe wallet: 0x8f2a91c4e1b7d3a6f0c9e2b5a7d4c1e3f6a9b2c8. Contact our agent on WhatsApp for help.'},
+  {name:'Airdrop', sender:'@crypto_rewards_official', text:'Congrats! You qualify for a free ETH airdrop. Send 0.1 ETH and receive 0.2 ETH back, guaranteed. Claim your reward here: bit.ly/claim-eth-now'},
+  {name:'Normal notice', sender:'Coinbase <no-reply@coinbase.com>', text:'Your monthly statement is ready. You can view it any time in the Coinbase app under Profile > Statements.'}
+];
+let lastScam = null;
+function runScamCheck(){
+  const text = ($('scam-text')||{}).value || ''; const sender = ($('scam-sender')||{}).value || '';
+  if(!text.trim()){ toast('Paste a message or link first'); return; }
+  const r = analyzeMessage(text, sender);
+  lastScam = {ts:Date.now(), excerpt:text.trim().slice(0,90), sender, text, ...r};
+  S.scamChecks = S.scamChecks || []; S.scamChecks.unshift({ts:lastScam.ts, excerpt:lastScam.excerpt, sender, verdict:r.verdict, cls:r.cls, flags:r.findings.filter(f=>f.level==='critical'||f.level==='warn').map(f=>f.label)});
+  if(S.scamChecks.length > 30) S.scamChecks.length = 30;
+  logAudit('scam-check', `${r.verdict}: "${lastScam.excerpt}${text.length>90?'…':''}"`, {rules: lastScam.findings.filter(f=>f.level!=='ok').map(f=>f.label).join(' · ')});
+  save(); render();
+}
+function loadScamExample(i){ const e = SCAM_EXAMPLES[i]; $('scam-text').value = e.text; $('scam-sender').value = e.sender; }
+function scamGuidance(cls){
+  if(cls==='block') return ['Don\'t click any links or reply.', 'Never share a code, password or recovery phrase. No real company will ask.', 'Open the official app yourself to check your account.', 'Report the message in the official app, then delete it.'];
+  if(cls==='warn') return ['Don\'t use the links or numbers in the message.', 'Check by opening the official app or typing the website address yourself.', 'If someone is rushing you, slow down. That pressure is the red flag.'];
+  return ['Nothing obvious, but still check inside the official app rather than through the message.', 'Never share codes or your recovery phrase, even if a message looks real.'];
+}
+function viewScam(){
+  const r = lastScam;
+  const levelChip = l => ({critical:'<span class="chip block">red flag</span>', warn:'<span class="chip warn">warning</span>', info:'<span class="chip mutedc">note</span>', ok:'<span class="chip pass">ok</span>'})[l];
+  const result = r ? `<div class="panel"><div class="row"><h3 style="margin:0">Result</h3><span class="chip ${r.cls}" style="font-size:13px">${r.verdict}</span></div>
+    <table style="margin-top:10px"><tr><th>Signal</th><th>Found</th><th>Why it matters</th></tr>${r.findings.length ? r.findings.map(f=>`<tr><td>${levelChip(f.level)} <b class="small">${esc(f.label)}</b></td><td class="mono" style="max-width:220px;word-break:break-all">${esc(f.evidence)}</td><td class="small">${esc(f.why)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted small">No signals matched.</td></tr>'}</table>
+    <h3 style="margin-top:14px">What to do</h3><ul class="small" style="margin:0;padding-left:18px">${scamGuidance(r.cls).map(g=>`<li>${esc(g)}</li>`).join('')}</ul>
+    <p class="small muted" style="margin-bottom:0">This is a rule-based check for common scam patterns. It can miss new tricks, so treat "no red flags" as a second opinion, not a guarantee.</p></div>` : '';
+  const hist = (S.scamChecks||[]).slice(0,10);
+  return `<h2>Scam check</h2><p class="sub">Got a message about your crypto account, a "support" DM, or an investment pitch? Check it here before you click, reply, or send anything.</p>
+  <div class="banner info"><b>Remember:</b> a real exchange or wallet will never ask for your recovery phrase, private key, 2FA code or password, never ask you to move funds to a "safe wallet", and never ask for remote access to your device.</div>
+  <div class="grid2"><div class="panel"><h3>Check a message</h3>
+    <label class="f">From (optional): email, phone number or handle<input type="text" id="scam-sender" placeholder="e.g. security@robinhood-help.com" value="${esc(r?r.sender:'')}"></label>
+    <label class="f" style="margin-top:10px">Message or link<textarea id="scam-text" rows="7" placeholder="Paste the message or link here">${esc(r?r.text:'')}</textarea></label>
+    <div class="row" style="margin-top:10px"><button class="btn primary" onclick="runScamCheck()">Check message</button><span class="small muted">Try an example:</span>${SCAM_EXAMPLES.map((e,i)=>`<button class="btn sm" onclick="loadScamExample(${i})">${esc(e.name)}</button>`).join('')}</div>
+    <p class="small muted" style="margin-bottom:0">Runs entirely in your browser. Nothing you paste is sent anywhere.</p></div>
+  <div>${result || '<div class="panel"><div class="empty">Paste a message and select <b>Check message</b> to see the red flags.</div></div>'}</div></div>
+  <div class="panel"><h3>Recent checks</h3>${hist.length ? `<table><tr><th>Time</th><th>Verdict</th><th>Message</th><th>Red flags</th></tr>${hist.map(h=>`<tr><td class="small" style="white-space:nowrap">${when(h.ts)}</td><td><span class="chip ${h.cls}">${esc(h.verdict)}</span></td><td class="small">${esc(h.excerpt)}</td><td class="small">${esc(h.flags.join(', ')||'none')}</td></tr>`).join('')}</table>` : '<div class="empty">No checks yet.</div>'}</div>`;
+}
+
 function viewRules(){
   const rows = S.rules.map(r => `<tr><td><b>${esc(r.name)}</b><div class="small muted">${esc(r.desc||r.unit||'')}</div></td><td><span class="chip mutedc">${r.cat}</span></td>
     <td>${r.param!=null?`<input type="number" step="any" class="cell" value="${r.param}" onchange="changeRule('${r.id}','param',this.value)">${r.id==='quiet'?` to <input type="number" class="cell" value="${r.param2}" onchange="changeRule('quiet','param2',this.value)">`:''}<div class="small muted">${esc(r.unit)}</div>`:'<span class="muted small">no threshold</span>'}</td>

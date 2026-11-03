@@ -3,6 +3,7 @@
 SignalDesk ranks crypto assets under a research style you choose and links every buy to a written thesis. Each order passes a configurable set of risk rules and your confirmation before it reaches Robinhood's official **Crypto Trading API**. Every step is audited and reconciled.
 
 - `index.html`: the app (research, theses, trade, review queue, audit log, account & keys, risk rules)
+- **Scam check tab**: paste a suspicious message or link and get a verdict with reasons (secret requests, "safe wallet" asks, look-alike links and emails, pressure tactics, off-platform contact, recovery scams). Rule-based and runs entirely in the browser.
 - `bridge.py`: a local service that signs and sends orders to Robinhood. Your private key stays on your machine.
 
 Robinhood only offers an official API for **crypto**. Stocks and options aren't supported, so SignalDesk doesn't trade them.
