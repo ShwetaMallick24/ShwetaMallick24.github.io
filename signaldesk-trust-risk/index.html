@@ -294,7 +294,7 @@ function defaultState(){
     shortlist:['BTC','ETH','SOL'], compare:[],
     theses:[
       {id:'T1', sym:'BTC', statement:'Core holding. Add on pullbacks while it leads the market on liquidity.', invalidation:'Loses relative strength for 30 days or breaks below my trigger price.', review:new Date(now+20*DAY).toISOString().slice(0,10), triggers:[{kind:'below', price:57800}], notes:'', created:now-30*DAY},
-      {id:'T2', sym:'ETH', statement:'Momentum improving vs BTC; liquidity is deep.', invalidation:'Momentum vs BTC turns negative.', review:new Date(now-3*DAY).toISOString().slice(0,10), triggers:[{kind:'below', price:2900}], notes:'Review overdue on purpose, to demo the thesis rule.', created:now-40*DAY}
+      {id:'T2', sym:'ETH', statement:'Momentum improving vs BTC; liquidity is deep.', invalidation:'Momentum vs BTC turns negative.', review:new Date(now-3*DAY).toISOString().slice(0,10), triggers:[{kind:'below', price:2900}], notes:'', created:now-40*DAY}
     ],
     cash:10000, holdings:{BTC:0.02, ETH:0.5},
     broker:{orders:{}, holdings:{BTC:0.02, ETH:0.5}},
@@ -926,7 +926,7 @@ function viewAccount(){
 function ackAnomaly(i){ const a = S.anomalies[i]; if(!a) return; a.ack = true; logAudit('anomaly', 'Acknowledged: ' + a.title); save(); render(); }
 /* ---------- scam check (rule-based, runs entirely in the browser) ---------- */
 const OFFICIAL_DOMAINS = ['binance.us','binance.com','robinhood.com','coinbase.com','kraken.com','gemini.com','metamask.io','ledger.com','trezor.io'];
-const BRANDS = ['binance','robinhood','coinbase','kraken','gemini','metamask','ledger','trezor'];
+const BRANDS = ['binance','robinhood','coinbase','kraken','gemini','metamask','ledger','trezor','paypal','usps','fedex','amazon'];
 const SHORTENERS = ['bit.ly','tinyurl.com','t.co','goo.gl','is.gd','cutt.ly','rb.gy','ow.ly','shorturl.at','tiny.cc','t.ly'];
 const FREE_MAIL = ['gmail.com','outlook.com','hotmail.com','yahoo.com','proton.me','protonmail.com','icloud.com','aol.com','gmx.com','mail.com'];
 const SCAM_RULES = [
@@ -938,12 +938,18 @@ const SCAM_RULES = [
    re:/\b(anydesk|teamviewer|remote access|screen ?share|share your screen|install (?:this|the) app|download (?:this|the) app|browser extension)\b/i},
   {id:'recovery', level:'critical', label:'Recovery or "release fee" scam', why:'Promises to get lost crypto back, or fees to "unlock" a withdrawal, are scams that target people who were already hit once.',
    re:/\b(recover (?:your )?(?:lost|stolen) (?:crypto|funds|coins|assets|money)|fund recovery|recovery (?:service|agent|expert)|upfront fee|fee upfront|release fee|unlock fee|pay (?:a )?(?:tax|fee) to withdraw|unclaimed (?:bitcoin|btc|crypto|funds|coins)|forgotten (?:bitcoin|btc|crypto|wallet)|dormant (?:wallet|account)|processing fee|get it (?:all )?back for)\b/i},
+  {id:'giftcard', level:'critical', label:'Asks for payment in gift cards', why:'No exchange, bank or government agency takes gift cards. Anyone asking you to buy them is a scammer.',
+   re:/\b(?:buy|purchase|pay (?:with|in|using)|send|get)\b[^.]{0,40}\b(?:gift ?cards?|itunes cards?|google play cards?|steam cards?)\b/i},
+  {id:'doubling', level:'critical', label:'Send crypto to get more back', why:'"Send 0.1, get 0.2 back" giveaways never pay out. Whatever you send is gone.',
+   re:/\bsend (?:me |us )?\d+(?:\.\d+)? ?(?:btc|eth|usdt|sol|bitcoin|ether)\b[^.]{0,40}\b(?:send (?:you )?back|get (?:back )?\d|receive \d|double)/i},
+  {id:'stranger', level:'warn', label:'New contact pushing an investment', why:'A new friend or match who steers you to a "special" platform is the classic setup for "pig butchering" scams.',
+   re:/\b(we just met|i know we just met|my (?:uncle|aunt|cousin|brother|sister|friend|mentor) (?:runs|owns|has|works (?:at|for)|manages)|i can (?:help|teach|show) you (?:open|invest|trade|make))\b/i},
   {id:'notme', level:'warn', label:'"Wasn\'t you?" alert', why:'Fake security alerts say something happened on your account so you panic and use their link or number. Check inside the official app instead.',
    re:/\b(if (?:this|it) was not you|if (?:this|it) wasn'?t you|wasn'?t you\?|if you did(?: not|n'?t) (?:request|authori[sz]e|make)|not you\?)/i},
   {id:'urgent', level:'warn', label:'Pressure or threats', why:'Scammers create panic so you act before you think. Real notices let you check in the official app.',
    re:/\b(urgent(?:ly)?|immediately|right away|within (?:24|48|12) hours|act now|final (?:notice|warning)|suspend(?:ed)?|locked|frozen|will be (?:closed|terminated|deleted)|unusual activity|unauthori[sz]ed (?:login|access|withdrawal)|verify (?:now|your account|immediately))\b/i},
   {id:'toogood', level:'warn', label:'Too good to be true', why:'Guaranteed returns, giveaways and "send 1, get 2" offers are classic scams.',
-   re:/\b(guaranteed|double your|2x your|risk[- ]free|100% (?:profit|return)|giveaway|free (?:btc|eth|crypto|usdt)|airdrop|claim your (?:reward|bonus)|send \d+(?:\.\d+)? (?:btc|eth|usdt)? ?(?:and|to) (?:get|receive))\b/i},
+   re:/\b(guaranteed|double your|2x your|risk[- ]free|100% (?:profit|return)|giveaway|free (?:btc|eth|crypto|usdt)|airdrop|claim your (?:reward|bonus)|send \d+(?:\.\d+)? (?:btc|eth|usdt)? ?(?:and|to) (?:get|receive)|\d+(?:\.\d+)?% (?:daily|a day|per day|every day|weekly|a week) (?:returns?|profits?|gains?|interest))\b/i},
   {id:'offplatform', level:'warn', label:'Moves you off official channels', why:'Real support stays in the official app or website. Scammers move you to WhatsApp, Telegram or a phone line they control.',
    re:/\b(whatsapp|telegram|signal app|call (?:us|this number|our hotline)|text (?:us|back)|reply with|dm (?:us|me)|contact (?:our )?(?:support|agent) (?:on|at|via))\b/i},
   {id:'impersonate', level:'info', label:'Claims to be a company or support team', why:'Anyone can say they are support. Check by opening the official app yourself, not by using the message.',
@@ -1011,10 +1017,11 @@ function runScamCheck(){
   const r = analyzeMessage(text, sender);
   lastScam = {ts:Date.now(), excerpt:text.trim().slice(0,90), sender, text, ...r};
   S.scamChecks = S.scamChecks || []; S.scamChecks.unshift({ts:lastScam.ts, excerpt:lastScam.excerpt, sender, verdict:r.verdict, cls:r.cls, flags:r.findings.filter(f=>f.level==='critical'||f.level==='warn').map(f=>f.label)});
-  if(S.scamChecks.length > 30) S.scamChecks.length = 30;
+  if(S.scamChecks.length > 40) S.scamChecks.length = 40;
   logAudit('scam-check', `${r.verdict}: "${lastScam.excerpt}${text.length>90?'…':''}"`, {rules: lastScam.findings.filter(f=>f.level!=='ok').map(f=>f.label).join('; ')});
   save(); render();
 }
+function setScamNote(ts, v){ const c = (S.scamChecks||[]).find(x=>x.ts===ts); if(c){ c.note = v; save(); } }
 function loadScamExample(i){ const e = SCAM_EXAMPLES[i]; $('scam-text').value = e.text; $('scam-sender').value = e.sender; }
 function scamGuidance(cls){
   if(cls==='block') return ['Don\'t click any links or reply.', 'Never share a code, password or recovery phrase. No real company will ask.', 'Open the official app yourself to check your account.', 'Report the message in the official app, then delete it.'];
@@ -1028,7 +1035,7 @@ function viewScam(){
     <table style="margin-top:10px"><tr><th>Signal</th><th>Found</th><th>Why it matters</th></tr>${r.findings.length ? r.findings.map(f=>`<tr><td style="min-width:160px">${levelChip(f.level)}<div class="small" style="font-weight:600;margin-top:4px">${esc(f.label)}</div></td><td class="mono" style="max-width:220px;word-break:break-all">${esc(f.evidence)}</td><td class="small">${esc(f.why)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted small">No signals matched.</td></tr>'}</table>
     <h3 style="margin-top:14px">What to do</h3><ul class="small" style="margin:0;padding-left:18px">${scamGuidance(r.cls).map(g=>`<li>${esc(g)}</li>`).join('')}</ul>
     <p class="small muted" style="margin-bottom:0">This is a rule-based check for common scam patterns. It can miss new tricks, so treat "no red flags" as a second opinion, not a guarantee.</p></div>` : '';
-  const hist = (S.scamChecks||[]).slice(0,10);
+  const hist = (S.scamChecks||[]).slice(0,20);
   return `<h2>Scam check</h2><p class="sub">Got a message about your crypto account, a "support" DM, or an investment pitch? Check it here before you click, reply, or send anything.</p>
   <div class="banner info"><b>Remember:</b> a real exchange or wallet will never ask for your recovery phrase, private key, 2FA code or password, never ask you to move funds to a "safe wallet", and never ask for remote access to your device.</div>
   <div class="grid2"><div class="panel"><h3>Check a message</h3>
@@ -1037,7 +1044,7 @@ function viewScam(){
     <div class="row" style="margin-top:10px"><button class="btn primary" onclick="runScamCheck()">Check message</button><span class="small muted">Try an example:</span>${SCAM_EXAMPLES.map((e,i)=>`<button class="btn sm" onclick="loadScamExample(${i})">${esc(e.name)}</button>`).join('')}</div>
     <p class="small muted" style="margin-bottom:0">Runs entirely in your browser. Nothing you paste is sent anywhere.</p></div>
   <div>${result || '<div class="panel"><div class="empty">Paste a message and select <b>Check message</b> to see the red flags.</div></div>'}</div></div>
-  <div class="panel"><h3>Recent checks</h3>${hist.length ? `<table><tr><th>Time</th><th>Verdict</th><th>Message</th><th>Red flags</th></tr>${hist.map(h=>`<tr><td class="small" style="white-space:nowrap">${when(h.ts)}</td><td><span class="chip ${h.cls}">${esc(h.verdict)}</span></td><td class="small">${esc(h.excerpt)}</td><td class="small">${esc(h.flags.join(', ')||'none')}</td></tr>`).join('')}</table>` : '<div class="empty">No checks yet.</div>'}</div>`;
+  <div class="panel"><h3>Recent checks</h3>${hist.length ? `<table><tr><th>Time</th><th>Verdict</th><th>Message</th><th>Red flags</th><th>What I did</th></tr>${hist.map(h=>`<tr><td class="small" style="white-space:nowrap">${when(h.ts)}</td><td><span class="chip ${h.cls}" style="white-space:nowrap">${esc(h.verdict)}</span></td><td class="small">${h.sender?`<div class="muted">${esc(h.sender)}</div>`:''}${esc(h.excerpt)}</td><td class="small">${esc(h.flags.join(', ')||'none')}</td><td class="small" style="min-width:220px"><textarea rows="3" style="width:100%;font-size:12.5px;resize:vertical" placeholder="Add a note" onchange="setScamNote(${h.ts}, this.value)">${esc(h.note||'')}</textarea></td></tr>`).join('')}</table>` : '<div class="empty">No checks yet.</div>'}</div>`;
 }
 
 /* ---------- risk signals (simulated third-party vendors) ---------- */
@@ -1144,40 +1151,67 @@ function ruleStats(id){
 }
 
 function seedScamChecks(){
-  if(S.scamSeeded) return;
+  if(S.scamSeeded2) return;
+  // Replace any earlier sample checks with the fuller set.
+  S.scamChecks = (S.scamChecks||[]).filter(c=>!c.seeded);
+  S.audit = S.audit.filter(a=>!(a.seeded && a.type==='scam-check'));
   const M = [
-    [8,7,'+1 (877) 555-0142','Robinhood: A withdrawal of 0.42 BTC was requested from your account. Wasn\'t you? Call us now at 1-877-555-0142 to cancel.'],
-    [8,12,'','Hey, it\'s Priya. Running 10 min late, call me when you\'re outside.'],
-    [8,21,'@crypto_mentor_amy','Hi dear, I made 40% this month with a private BTC signal group. Message me on WhatsApp and I\'ll add you, limited spots, guaranteed returns.'],
-    [8,30,'support@robinhood-secure-help.com','Your account has been locked due to unusual activity. Verify your identity within 24 hours or it will be suspended: http://robinhood-secure-help.com/verify'],
-    [9,5,'','Your Coinbase verification code is 482913. Don\'t share this code with anyone.'],
-    [9,14,'@walletsupport_desk','Hello, I\'m from wallet support. To fix the sync error I need your 12-word recovery phrase so we can restore your funds.'],
-    [9,22,'notifications@robinhood.com','Your monthly statement for August is ready. Open the Robinhood app to view it.'],
-    [10,1,'@recovery_pro_hackers','Lost crypto to a scam? We recovered $2M for clients last year. Pay a small release fee and we\'ll get your funds back in 48 hours.'],
-    [10,9,'+1 (646) 555-0199','Binance Security: someone tried to sign in from Lagos, Nigeria. If this wasn\'t you, move your funds to a safe wallet: bit.ly/secure-wallet-now'],
-    [10,17,'','Congrats! You have 0.85 unclaimed bitcoin from an old wallet. Connect your wallet at claim-btc-rewards.xyz to receive it today.'],
-    [10,26,'@it_helpdesk','To resolve the trading error, please install AnyDesk and share the code so our technician can access your computer.'],
-    [11,2,'no-reply@binance.us','Your deposit of $250.00 has been credited. You can view it in the app under Wallet.'],
+    [8,5,'+1 (877) 555-0142','Robinhood: A withdrawal of 0.42 BTC was requested from your account. Wasn\'t you? Call us now at 1-877-555-0142 to cancel.','Did not call. Checked the app: no withdrawal pending. Reported the number.'],
+    [8,7,'','Hey, it\'s Priya. Running 10 min late, call me when you\'re outside.','Friend. Good to see "call me" alone is not flagged.'],
+    [8,12,'@crypto_mentor_amy','Hi dear, I made 40% this month with a private BTC signal group. Message me on WhatsApp and I\'ll add you, limited spots, guaranteed returns.','Instagram DM. Blocked and reported the account.'],
+    [8,16,'security@coinbase-alerts.net','Unusual sign-in detected on your Coinbase account. Confirm it was you at coinbase-alerts.net/confirm or your account will be frozen.','Look-alike domain. Logged in through the app instead; no alerts there.'],
+    [8,23,'support@robinhood-secure-help.com','Your account has been locked due to unusual activity. Verify your identity within 24 hours or it will be suspended: http://robinhood-secure-help.com/verify','Forwarded to the real support team as phishing, then deleted.'],
+    [8,29,'@elon_giveaway_official','To celebrate our launch, send 0.1 BTC and we will send back 0.2 BTC instantly. Offer ends tonight!','Classic giveaway scam. Reported the post.'],
+    [9,2,'','Your Coinbase verification code is 482913. Don\'t share this code with anyone.','I requested this code myself. Legit.'],
+    [9,9,'@walletsupport_desk','Hello, I\'m from wallet support. To fix the sync error I need your 12-word recovery phrase so we can restore your funds.','Replied in a public Discord thread after I asked a question. Never share the phrase.'],
+    [9,15,'Mom','Can you look at this? Someone from "Binance" called and said my account was hacked and I need to buy gift cards to secure it.','Checked for Mom. Told her to hang up; no exchange asks for gift cards.'],
+    [9,22,'notifications@robinhood.com','Your monthly statement for August is ready. Open the Robinhood app to view it.','Real email; no link to log in, just points to the app.'],
+    [9,28,'@sarah_trades_btc','I know we just met, but my uncle runs a crypto platform with 3% daily returns. I can help you open an account at nexa-trade.io.','Dating-app "pig butchering" pattern. Unmatched and reported.'],
+    [10,1,'@recovery_pro_hackers','Lost crypto to a scam? We recovered $2M for clients last year. Pay a small release fee and we\'ll get your funds back in 48 hours.','Recovery scams target people who already lost money. Reported.'],
+    [10,6,'billing@paypa1-support.com','PayPal: we charged $499.99 for a Bitcoin purchase. If you did not authorize this, call 1-888-555-0177 to cancel.','No charge in my PayPal app. Callback scam; ignored.'],
+    [10,9,'+1 (646) 555-0199','Binance Security: someone tried to sign in from Lagos, Nigeria. If this wasn\'t you, move your funds to a safe wallet: bit.ly/secure-wallet-now','"Move funds to a safe wallet" is always a scam. Reported the number.'],
+    [10,14,'no-reply@kraken.com','You requested a password reset. If this was you, open the Kraken app to finish. If not, you can ignore this email.','Real. I had just reset my password.'],
+    [10,17,'','Congrats! You have 0.85 unclaimed bitcoin from an old wallet. Connect your wallet at claim-btc-rewards.xyz to receive it today.','Wallet-drainer bait. Did not connect anything.'],
+    [10,21,'@ledger_support_team','Your Ledger firmware is out of date. Download the update from ledger-update-app.com and enter your seed to restore.','Fake support account. Updates only come through Ledger Live.'],
+    [10,26,'@it_helpdesk','To resolve the trading error, please install AnyDesk and share the code so our technician can access your computer.','Remote access request. Never install for "support".'],
+    [10,30,'+1 (415) 555-0123','USPS: your package is on hold due to an unpaid $1.99 fee. Pay now at usps-redelivery-help.com','Not crypto, but same pattern: look-alike link plus urgency.'],
+    [11,2,'no-reply@binance.us','Your deposit of $250.00 has been credited. You can view it in the app under Wallet.','My own deposit. Correctly passed.'],
   ];
   let r = 90210; const rnd = () => (r = (r*1103515245 + 12345) % 2147483648) / 2147483648;
   const items = [];
-  M.forEach(([m,d,sender,text]) => {
+  M.forEach(([m,d,sender,text,note]) => {
     let res; try{ res = analyzeMessage(text, sender); }catch(e){ return; }
     const ts = new Date(2026, m-1, d, 8 + Math.floor(rnd()*13), Math.floor(rnd()*60)).getTime();
     const excerpt = text.length>90 ? text.slice(0, text.lastIndexOf(' ',88)) + '…' : text;
-    items.push({ts, excerpt, sender, verdict:res.verdict, cls:res.cls, flags:res.findings.filter(f=>f.level==='critical'||f.level==='warn').map(f=>f.label), seeded:true});
+    items.push({ts, excerpt, sender, verdict:res.verdict, cls:res.cls, flags:res.findings.filter(f=>f.level==='critical'||f.level==='warn').map(f=>f.label), note, seeded:true});
     S.audit.push({ts, type:'scam-check', detail:`${res.verdict}: "${excerpt}"`, rules:res.findings.filter(f=>f.level!=='ok').map(f=>f.label).join('; '), seeded:true});
   });
-  S.scamChecks = (S.scamChecks||[]).concat(items).sort((a,b)=>b.ts-a.ts).slice(0,30);
+  S.scamChecks = S.scamChecks.concat(items).sort((a,b)=>b.ts-a.ts).slice(0,40);
   S.audit.sort((a,b)=>b.ts-a.ts);
-  S.scamSeeded = true; save();
+  S.scamSeeded = S.scamSeeded2 = true; save();
+}
+function fillNotes(){
+  if(S.notesFilled) return;
+  const N = {
+    BTC:'Aug 12: bought a small starter position on the dip. Sep 24: market swing, turned the kill switch on for a few hours instead of panic selling. Oct 8: added a little more; still leading on liquidity. Next check: does it hold relative strength through November?',
+    ETH:'Aug 19: tried to buy more than my size limit, got blocked, sized down. Fair. Oct: momentum vs BTC flattening. If it turns negative for 30 days, the thesis is broken and I trim.',
+    SOL:'Watching only. Volatility is high (75%) and unlock risk is medium. Want to see 30 days of beating BTC before I size up.',
+    LINK:'Security flag on watch. No new money until it clears.',
+    XRP:'Low fit for my style. Keeping it on the list only to compare.',
+    ADA:'Lagging BTC. Not a buy for me right now.',
+    AVAX:'Thin liquidity and high unlock risk. Pass for now.'
+  };
+  (S.theses||[]).forEach(t => { if(!t.notes || /demo the thesis rule/.test(t.notes)) t.notes = N[t.sym] || 'Reviewed. Thesis still holds; no change to size.'; });
+  const R = {'Approved':'Checked the order details and my thesis. Rule worked as intended; approved.', 'Rejected':'Order was outside my plan. Rejected and left the limit as is.', 'Rule tuned':'Limit was too tight for normal activity. Tuned it, with the 24-hour cooldown.'};
+  (S.cases||[]).forEach(c => { if(c.status==='resolved' && !c.note) c.note = R[c.resolution] || 'Reviewed. No further action needed.'; });
+  S.notesFilled = true; save();
 }
 /* ---------- boot ---------- */
 (function boot(){
   const h = (location.hash||'').slice(1); if(TABS.some(t=>t[0]===h)) tab = h;
   window.addEventListener('hashchange', () => { const h2 = location.hash.slice(1); if(TABS.some(t=>t[0]===h2) && h2!==tab){ tab = h2; render(); } });
   $('modal').addEventListener('click', e => { if(e.target.id==='modal') closeModal(); });
-  seedScamChecks(); initMarket(); render(); initBridge();
+  seedScamChecks(); fillNotes(); initMarket(); render(); initBridge();
   setInterval(tickSim, 4000);
   setInterval(() => { Object.values(S.signals.vendors).forEach(v => { if(v.status !== 'down') v.updated = Date.now(); }); if(tab==='signals') document.querySelectorAll('.fresh').forEach(el => { el.textContent = ago(S.signals.vendors[el.dataset.v].updated); }); }, 3000);
 })();
