@@ -1143,12 +1143,41 @@ function ruleStats(id){
   return recent.length ? `${b} block, ${w} warn${s?`, ${s} shadow`:''}` : '<span class="muted">no checks yet</span>';
 }
 
+function seedScamChecks(){
+  if(S.scamSeeded) return;
+  const M = [
+    [8,7,'+1 (877) 555-0142','Robinhood: A withdrawal of 0.42 BTC was requested from your account. Wasn\'t you? Call us now at 1-877-555-0142 to cancel.'],
+    [8,12,'','Hey, it\'s Priya. Running 10 min late, call me when you\'re outside.'],
+    [8,21,'@crypto_mentor_amy','Hi dear, I made 40% this month with a private BTC signal group. Message me on WhatsApp and I\'ll add you, limited spots, guaranteed returns.'],
+    [8,30,'support@robinhood-secure-help.com','Your account has been locked due to unusual activity. Verify your identity within 24 hours or it will be suspended: http://robinhood-secure-help.com/verify'],
+    [9,5,'','Your Coinbase verification code is 482913. Don\'t share this code with anyone.'],
+    [9,14,'@walletsupport_desk','Hello, I\'m from wallet support. To fix the sync error I need your 12-word recovery phrase so we can restore your funds.'],
+    [9,22,'notifications@robinhood.com','Your monthly statement for August is ready. Open the Robinhood app to view it.'],
+    [10,1,'@recovery_pro_hackers','Lost crypto to a scam? We recovered $2M for clients last year. Pay a small release fee and we\'ll get your funds back in 48 hours.'],
+    [10,9,'+1 (646) 555-0199','Binance Security: someone tried to sign in from Lagos, Nigeria. If this wasn\'t you, move your funds to a safe wallet: bit.ly/secure-wallet-now'],
+    [10,17,'','Congrats! You have 0.85 unclaimed bitcoin from an old wallet. Connect your wallet at claim-btc-rewards.xyz to receive it today.'],
+    [10,26,'@it_helpdesk','To resolve the trading error, please install AnyDesk and share the code so our technician can access your computer.'],
+    [11,2,'no-reply@binance.us','Your deposit of $250.00 has been credited. You can view it in the app under Wallet.'],
+  ];
+  let r = 90210; const rnd = () => (r = (r*1103515245 + 12345) % 2147483648) / 2147483648;
+  const items = [];
+  M.forEach(([m,d,sender,text]) => {
+    let res; try{ res = analyzeMessage(text, sender); }catch(e){ return; }
+    const ts = new Date(2026, m-1, d, 8 + Math.floor(rnd()*13), Math.floor(rnd()*60)).getTime();
+    const excerpt = text.length>90 ? text.slice(0, text.lastIndexOf(' ',88)) + '…' : text;
+    items.push({ts, excerpt, sender, verdict:res.verdict, cls:res.cls, flags:res.findings.filter(f=>f.level==='critical'||f.level==='warn').map(f=>f.label), seeded:true});
+    S.audit.push({ts, type:'scam-check', detail:`${res.verdict}: "${excerpt}"`, rules:res.findings.filter(f=>f.level!=='ok').map(f=>f.label).join('; '), seeded:true});
+  });
+  S.scamChecks = (S.scamChecks||[]).concat(items).sort((a,b)=>b.ts-a.ts).slice(0,30);
+  S.audit.sort((a,b)=>b.ts-a.ts);
+  S.scamSeeded = true; save();
+}
 /* ---------- boot ---------- */
 (function boot(){
   const h = (location.hash||'').slice(1); if(TABS.some(t=>t[0]===h)) tab = h;
   window.addEventListener('hashchange', () => { const h2 = location.hash.slice(1); if(TABS.some(t=>t[0]===h2) && h2!==tab){ tab = h2; render(); } });
   $('modal').addEventListener('click', e => { if(e.target.id==='modal') closeModal(); });
-  initMarket(); render(); initBridge();
+  seedScamChecks(); initMarket(); render(); initBridge();
   setInterval(tickSim, 4000);
   setInterval(() => { Object.values(S.signals.vendors).forEach(v => { if(v.status !== 'down') v.updated = Date.now(); }); if(tab==='signals') document.querySelectorAll('.fresh').forEach(el => { el.textContent = ago(S.signals.vendors[el.dataset.v].updated); }); }, 3000);
 })();
