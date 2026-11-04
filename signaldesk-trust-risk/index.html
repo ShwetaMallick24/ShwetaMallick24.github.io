@@ -5,110 +5,183 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SignalDesk: Research to Robinhood, with guardrails</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;650;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
-  --bg:#f6f7f9;--panel:#fff;--ink:#14171c;--ink2:#5b6472;--line:#e4e7ec;--soft:#f1f3f6;
-  --accent:#1d4ed8;--accentSoft:#e8efff;--good:#0f7b4a;--goodSoft:#e5f5ec;--warn:#a15c00;--warnSoft:#fff3dd;
-  --bad:#b42318;--badSoft:#fdecea;--shadow:#8a94a6;--mono:'JetBrains Mono',ui-monospace,monospace;
+  --ink:#14211F; --ink-2:#1D2E2B; --ink-3:#2A3F3B; --side-text:#C9D6D2; --side-dim:#8FA39E;
+  --bg:#F3F5F4; --panel:#FFFFFF; --text:#16201E; --text-2:#55625F; --line:#DDE3E1; --line-2:#EBEFEE; --hover:#F6F8F7;
+  --accent:#0E5E4F; --accent-2:#0A4A3E; --accentSoft:#E3F0EC;
+  --good:#1B6B3A; --goodSoft:#E5F2E9; --warn:#946200; --warnSoft:#FBF1DC; --bad:#B42318; --badSoft:#FBE9E7; --info:#3E5C76; --infoSoft:#E8EEF3;
+  --shadow:#7A8784; --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --radius:6px;
 }
 *{box-sizing:border-box}
-body{margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+html,body{margin:0}
+body{font-family:'Public Sans',system-ui,-apple-system,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
 button,input,select,textarea{font:inherit;color:inherit}
-header.top{background:#0f172a;color:#fff;padding:14px 24px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}
-.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.01em}
-.brand .dot{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#60a5fa,#1d4ed8);display:grid;place-items:center;font-size:12px}
-.brand small{font-weight:400;color:#94a3b8;font-size:12px}
-.kpis{display:flex;gap:22px;margin-left:auto;flex-wrap:wrap;align-items:center}
-.kpi{font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.04em}
-.kpi b{display:block;color:#fff;font-size:15px;text-transform:none;letter-spacing:0;font-weight:600}
-.mode{padding:4px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#1e293b;border:1px solid #334155}
-.mode.sim{color:#93c5fd}.mode.dry{color:#fcd34d}.mode.live{color:#86efac}
-.kill{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;padding:6px 12px;border-radius:8px;border:1px solid #475569;background:#1e293b;color:#fff;cursor:pointer}
-.kill.on{background:#b42318;border-color:#f87171}
-nav.tabs{display:flex;gap:2px;padding:0 24px;background:#fff;border-bottom:1px solid var(--line);overflow-x:auto}
-nav.tabs button{border:0;background:none;padding:13px 14px;cursor:pointer;color:var(--ink2);font-weight:500;border-bottom:2px solid transparent;white-space:nowrap}
-nav.tabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
-.badge{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:var(--bad);color:#fff;font-size:11px;font-weight:600;margin-left:6px;text-align:center}
-main{max-width:1180px;margin:0 auto;padding:22px 24px 60px}
-h2{font-size:18px;margin:0 0 4px;letter-spacing:-.01em}
-.sub{color:var(--ink2);margin:0 0 16px}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
-.panel h3{margin:0 0 10px;font-size:14px}
+a{color:var(--accent);text-underline-offset:2px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* shell */
+.app{display:grid;grid-template-columns:236px minmax(0,1fr);min-height:100vh}
+.grid2>*,.grid3>*{min-width:0}
+.row>label.f{flex:1 1 130px;min-width:0}
+#ticket,#ticket>*{min-width:0}
+select,input{max-width:100%}
+label.check{display:flex;gap:8px;align-items:flex-start;flex-wrap:nowrap}
+label.check input{margin-top:3px;flex:none}
+.row>label.f select,.row>label.f input{width:100%}
+.side{background:var(--ink);color:var(--side-text);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;padding:18px 12px}
+.brand{display:flex;align-items:center;gap:10px;padding:2px 8px 18px;border-bottom:1px solid var(--ink-3);margin-bottom:12px}
+.brand svg{flex:none}
+.brand b{display:block;color:#fff;font-size:16px;font-weight:700;letter-spacing:-.01em}
+.brand span{display:block;color:var(--side-dim);font-size:12px}
+nav.tabs{display:flex;flex-direction:column;gap:1px;flex:1;overflow-y:auto}
+nav.tabs .grp{color:var(--side-dim);font-size:12px;font-weight:600;padding:14px 10px 6px}
+nav.tabs button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:none;color:var(--side-text);padding:8px 10px;border-radius:5px;cursor:pointer;font-weight:500;font-size:14px}
+nav.tabs button svg{flex:none;opacity:.75}
+nav.tabs button:hover{background:var(--ink-2);color:#fff}
+nav.tabs button.on{background:var(--ink-3);color:#fff;box-shadow:inset 3px 0 0 #6FC2A9}
+nav.tabs button.on svg{opacity:1}
+.badge{margin-left:auto;min-width:20px;padding:0 6px;border-radius:10px;background:var(--bad);color:#fff;font-size:11px;font-weight:600;line-height:18px;text-align:center}
+.side-foot{border-top:1px solid var(--ink-3);padding-top:12px;display:flex;flex-direction:column;gap:10px}
+.mode{align-self:flex-start;font-size:12px;font-weight:600;padding:3px 9px;border-radius:4px;border:1px solid var(--ink-3);color:var(--side-text)}
+.mode.sim{color:#A9D3C6}.mode.dry{color:#F2C46B;border-color:#5C4A1F}.mode.live{color:#FF9C91;border-color:#6B2620}
+/* the kill switch: the one deliberately loud control */
+.kill{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 12px;border-radius:6px;border:1px solid #3B524D;background:var(--ink-2);color:#fff;cursor:pointer}
+.kill:hover{border-color:#5C7A73}
+.kill .led{width:10px;height:10px;border-radius:50%;background:#4FB38F;box-shadow:0 0 0 3px rgba(79,179,143,.18)}
+.kill b{display:block;font-size:13px}
+.kill small{display:block;color:var(--side-dim);font-size:11.5px}
+.kill .state{font-size:12px;font-weight:700;padding:2px 8px;border-radius:4px;background:#25403A;color:#A9D3C6}
+.kill.on{background:#5A1712;border-color:#B42318}
+.kill.on .led{background:#FF5A47;box-shadow:0 0 0 3px rgba(255,90,71,.25)}
+.kill.on small{color:#F3B8B1}
+.kill.on .state{background:#B42318;color:#fff}
+
+.main-wrap{min-width:0;display:flex;flex-direction:column}
+.top{display:flex;align-items:center;gap:24px;padding:12px 32px;background:var(--panel);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.top .where{font-size:13px;color:var(--text-2)}
+.top .where b{color:var(--text);font-weight:600}
+.kpis{display:flex;gap:28px;margin-left:auto}
+.kpi{font-size:12px;color:var(--text-2)}
+.kpi b{display:block;color:var(--text);font-size:16px;font-weight:600}
+main{width:100%;max-width:1200px;padding:28px 32px 48px}
+footer{margin-top:auto;color:var(--text-2);font-size:12.5px;padding:16px 32px 28px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line-2)}
+
+/* content */
+h2{font-size:22px;font-weight:700;letter-spacing:-.015em;margin:0 0 4px}
+.sub{color:var(--text-2);margin:0 0 20px;max-width:78ch}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:18px}
+.panel h3{margin:0 0 12px;font-size:15px;font-weight:650}
 .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
-.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-@media(max-width:860px){.grid2,.grid3{grid-template-columns:1fr}.kpis{margin-left:0}}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
 table{width:100%;border-collapse:collapse}
-th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink2);font-weight:600;padding:8px;border-bottom:1px solid var(--line);white-space:nowrap}
-td{padding:9px 8px;border-bottom:1px solid var(--soft);vertical-align:top}
+th{text-align:left;font-size:12.5px;color:var(--text-2);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);background:#F8FAF9;white-space:nowrap}
+td{padding:10px;border-bottom:1px solid var(--line-2);vertical-align:top}
 tr:last-child td{border-bottom:0}
-.num{text-align:right;font-variant-numeric:tabular-nums}
+tbody tr:hover td{background:var(--hover)}
+.num{text-align:right}
 .mono{font-family:var(--mono);font-size:12px}
-.muted{color:var(--ink2)}
-.small{font-size:12px}
-.btn{border:1px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:500}
-.btn:hover{background:var(--soft)}
+.muted{color:var(--text-2)}
+.small{font-size:12.5px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:5px;padding:7px 13px;cursor:pointer;font-weight:500;line-height:1.3}
+.btn:hover{background:var(--hover);border-color:#C9D2CF}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn.primary:hover{background:#1e40af}
-.btn.danger{color:var(--bad);border-color:#f5c2bd}
-.btn.sm{padding:4px 9px;font-size:12px}
+.btn.primary:hover{background:var(--accent-2);border-color:var(--accent-2)}
+.btn.danger{color:var(--bad);border-color:#F0C7C2}
+.btn.sm{padding:4px 10px;font-size:12.5px}
 .btn:disabled{opacity:.5;cursor:not-allowed}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
-.seg button{border:0;background:none;padding:7px 12px;cursor:pointer;color:var(--ink2);font-weight:500}
-.seg button.on{background:var(--accentSoft);color:var(--accent)}
-.chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:5px;overflow:hidden;background:#fff}
+.seg button{border:0;background:none;padding:6px 13px;cursor:pointer;color:var(--text-2);font-weight:500}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--accentSoft);color:var(--accent);font-weight:600}
+.chip{display:inline-block;padding:1px 8px;border-radius:4px;font-size:12px;font-weight:600;white-space:nowrap;line-height:20px}
 .chip.pass{background:var(--goodSoft);color:var(--good)}
 .chip.warn{background:var(--warnSoft);color:var(--warn)}
 .chip.block{background:var(--badSoft);color:var(--bad)}
-.chip.info{background:var(--accentSoft);color:var(--accent)}
-.chip.mutedc{background:var(--soft);color:var(--ink2)}
-.chip.shadow{background:#eef0f4;color:#4b5565;border:1px dashed var(--shadow)}
-.scorebar{height:6px;background:var(--soft);border-radius:4px;width:90px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:6px}
+.chip.info{background:var(--infoSoft);color:var(--info)}
+.chip.mutedc{background:var(--line-2);color:var(--text-2)}
+.chip.shadow{background:#fff;color:#4B5754;border:1px dashed var(--shadow)}
+.scorebar{height:6px;background:var(--line-2);border-radius:3px;width:88px;overflow:hidden;display:inline-block;vertical-align:middle;margin-right:8px}
 .scorebar i{display:block;height:100%;background:var(--accent)}
-label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--ink2);font-weight:500}
-input[type=text],input[type=number],input[type=date],select,textarea{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fff;min-width:0}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--text-2);font-weight:600}
+input[type=text],input[type=number],input[type=date],select,textarea{border:1px solid #CDD5D2;border-radius:5px;padding:7px 10px;background:#fff;min-width:0;font-weight:400;color:var(--text)}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accentSoft);border-color:var(--accent)}
 textarea{resize:vertical}
-input.cell{width:70px;padding:3px 6px;font-size:12px}
-.banner{padding:10px 12px;border-radius:8px;background:var(--warnSoft);color:#6b3d00;font-size:12.5px;margin-bottom:14px}
-.banner.info{background:var(--accentSoft);color:#1e3a8a}
-.banner.bad{background:var(--badSoft);color:#7a1a12}
-.rules td{padding:7px 8px}
-.why{font-size:12.5px}
+input.cell{width:76px;padding:4px 7px;font-size:12.5px}
+.banner{padding:11px 14px;border-radius:5px;background:var(--warnSoft);color:#5E4300;font-size:13px;margin-bottom:16px;border-left:3px solid var(--warn)}
+.banner.info{background:var(--accentSoft);color:#0B3F35;border-left-color:var(--accent)}
+.banner.bad{background:var(--badSoft);color:#7A1A12;border-left-color:var(--bad)}
+.rules td{padding:8px 10px}
+td.why{font-size:12.5px;min-width:240px}
 .why .plus{color:var(--good)}.why .minus{color:var(--warn)}
-.card{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:#fff}
-.card h4{margin:0 0 4px;font-size:14px}
-.kv{display:grid;grid-template-columns:140px 1fr;gap:4px 12px;font-size:13px}
-.kv div:nth-child(odd){color:var(--ink2)}
-.modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+.card{border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;background:#fff}
+.card h4{margin:0 0 4px;font-size:14.5px;font-weight:650}
+.kv{display:grid;grid-template-columns:150px 1fr;gap:6px 14px;font-size:13.5px}
+.kv div:nth-child(odd){color:var(--text-2)}
+.modal-bg{position:fixed;inset:0;background:rgba(20,33,31,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
 .modal-bg.on{display:flex}
-.modal{background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:90vh;overflow:auto;padding:20px}
-.modal h3{margin:0 0 12px}
-.toast{position:fixed;bottom:20px;right:20px;background:#0f172a;color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;opacity:0;transform:translateY(8px);transition:.2s;z-index:30;max-width:360px}
+.modal{background:#fff;border-radius:8px;max-width:600px;width:100%;max-height:90vh;overflow:auto;padding:24px;border:1px solid var(--line)}
+.modal h3{margin:0 0 14px;font-size:17px}
+.toast{position:fixed;bottom:22px;right:22px;background:var(--ink);color:#fff;padding:10px 16px;border-radius:6px;font-size:13px;opacity:0;transform:translateY(6px);transition:opacity .18s,transform .18s;z-index:30;max-width:380px}
 .toast.on{opacity:1;transform:none}
-.empty{color:var(--ink2);padding:18px;text-align:center;font-size:13px}
+.empty{color:var(--text-2);padding:20px;text-align:center;font-size:13px}
 .flex1{flex:1}
 .right{margin-left:auto}
-.star{cursor:pointer;border:0;background:none;font-size:16px;color:#c3c9d4;padding:0}
-.star.on{color:#e0a100}
-footer{color:var(--ink2);font-size:12px;text-align:center;padding:10px 24px 30px}
-pre.code{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px;font-family:var(--mono);font-size:11.5px;overflow:auto;max-height:220px;white-space:pre-wrap;word-break:break-all}
+.star{cursor:pointer;border:0;background:none;font-size:16px;color:#C3CBC8;padding:0}
+.star.on{color:#C99A06}
+pre.code{background:var(--ink);color:#DDE7E4;border-radius:6px;padding:12px;font-family:var(--mono);font-size:11.5px;overflow:auto;max-height:220px;white-space:pre-wrap;word-break:break-all}
+details summary{cursor:pointer}
+
+@media(max-width:960px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .kpis{flex-wrap:wrap}
+  .panel{padding:14px}
+  .panel{overflow-x:auto}
+  .side{position:static;height:auto;padding:12px}
+  .brand{border:0;padding-bottom:8px;margin-bottom:4px}
+  nav.tabs{flex-direction:row;overflow-x:auto;gap:4px}
+  nav.tabs .grp{display:none}
+  nav.tabs button{width:auto;white-space:nowrap}
+  .side-foot{flex-direction:row;align-items:center;border:0;padding-top:8px}
+  .kill{width:auto}
+  .top{position:static;padding:10px 16px;flex-wrap:wrap}
+  .kpis{margin-left:0;gap:18px}
+  main{padding:20px 16px 40px}
+  footer{padding:14px 16px 24px}
+  .grid2,.grid3{grid-template-columns:1fr}
+}
+@media(prefers-reduced-motion:reduce){.toast{transition:none}}
 </style>
 </head>
 <body>
-<header class="top">
-  <div class="brand"><span class="dot">S</span>SignalDesk <small>research → guarded execution</small></div>
-  <div class="kpis">
-    <div class="kpi">Portfolio<b id="k-port">–</b></div>
-    <div class="kpi">Buying power<b id="k-bp">–</b></div>
-    <div class="kpi">Open cases<b id="k-cases">0</b></div>
-    <span class="mode" id="k-mode">Simulation</span>
-    <button class="kill" id="k-kill" onclick="toggleKill()">Kill switch: off</button>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="6" fill="#0E5E4F"/><path d="M8 19.5c1.4 1.2 3.4 1.9 5.4 1.9 3 0 5-1.4 5-3.6 0-4.7-9.6-2.6-9.6-7 0-2 1.9-3.4 4.6-3.4 1.8 0 3.4.5 4.7 1.4" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="22.5" cy="20.5" r="2.2" fill="#6FC2A9"/></svg>
+      <div><b>SignalDesk</b><span>Trust and risk console</span></div>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+    <div class="side-foot">
+      <span class="mode" id="k-mode">Simulation</span>
+      <button class="kill" id="k-kill" onclick="toggleKill()" aria-label="Kill switch"></button>
+    </div>
+  </aside>
+  <div class="main-wrap">
+    <header class="top">
+      <div class="where" id="k-where"></div>
+      <div class="kpis">
+        <div class="kpi">Portfolio<b id="k-port">–</b></div>
+        <div class="kpi">Buying power<b id="k-bp">–</b></div>
+        <div class="kpi">Open cases<b id="k-cases">0</b></div>
+      </div>
+    </header>
+    <main id="view"></main>
+    <footer><span>Scores show how well an asset fits your research style. They are not predicted returns or buy recommendations.</span><button class="btn sm" onclick="resetDemo()">Reset demo data</button></footer>
   </div>
-</header>
-<nav class="tabs" id="tabs"></nav>
-<main id="view"></main>
-<footer>Scores mean research fit under your chosen style. They are not predicted returns or buy recommendations. <button class="btn sm" onclick="resetDemo()">Reset demo data</button></footer>
+</div>
 
 <div class="modal-bg" id="modal"><div class="modal" id="modal-body"></div></div>
 <div class="toast" id="toast"></div>
@@ -414,17 +487,17 @@ function openConfirm(order){
   const ev = evaluateOrder(order);
   const step = needsStepUp(order);
   if(step) stepCode = String(Math.floor(100000 + Math.random()*900000));
-  const warns = ev.warns.map((w,i)=>`<label class="row small" style="margin:6px 0"><input type="checkbox" class="ack" data-i="${i}"> <span><span class="chip warn">Warn</span> <b>${esc(w.name)}</b>: ${esc(w.detail)}</span></label>`).join('');
+  const warns = ev.warns.map((w,i)=>`<label class="check small" style="margin:6px 0"><input type="checkbox" class="ack" data-i="${i}"> <span><span class="chip warn">Warn</span> <b>${esc(w.name)}</b>: ${esc(w.detail)}</span></label>`).join('');
   openModal(`<h3>Confirm order ${order.id}</h3>
     <div class="kv" style="margin-bottom:12px">
-      <div>Order</div><div><b>${order.side.toUpperCase()} ${qty(order.qty)} ${order.sym}</b> · ${order.type}${order.limit?' @ '+px(order.limit):''}</div>
+      <div>Order</div><div><b>${order.side.toUpperCase()} ${qty(order.qty)} ${order.sym}</b>, ${order.type}${order.limit?' @ '+px(order.limit):''}</div>
       <div>Estimated value</div><div>${usd(order.notional)}</div>
       <div>Thesis</div><div>${order.thesisId ? esc(order.thesisId) : '<span class="muted">none</span>'}</div>
       <div>Research rank</div><div>#${ev.rank} under ${STYLES[S.style].label}</div>
       <div>Sends to</div><div>${liveMode() ? (bridge.status.dry_run ? 'Local bridge (dry run, not sent to Robinhood)' : '<b style="color:var(--bad)">Robinhood, LIVE</b>') : 'Simulated broker'}</div>
     </div>
     ${warns ? '<div class="small muted">Acknowledge each warning to continue:</div>'+warns : '<div class="chip pass">All enforced rules passed</div>'}
-    ${step ? `<div class="panel" style="margin-top:12px;background:var(--soft)"><b class="small">Step-up confirmation</b><div class="small muted">${order.notional > rule('size').param ? 'Order is above your size cap.' : 'Your rule settings changed in the last 24 hours.'} Enter the code from your authenticator.</div><div class="row" style="margin-top:8px"><input type="text" id="stepcode" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="width:140px"><span class="small muted">Demo authenticator: <span class="mono">${stepCode}</span></span></div></div>` : ''}
+    ${step ? `<div class="panel" style="margin-top:12px;background:var(--soft)"><b class="small">Step-up confirmation</b><div class="small muted">${order.notional > rule('size').param ? 'Order is above your size cap.' : 'Your rule settings changed in the last 24 hours.'} Enter the code from your authenticator.</div><div class="row" style="margin-top:8px"><input type="text" id="stepcode" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="width:140px"><span class="small muted">Authenticator code (simulation): <span class="mono">${stepCode}</span></span></div></div>` : ''}
     <div class="row" style="margin-top:16px"><button class="btn primary" onclick="confirmOrder('${order.id}', ${step})">Confirm and send</button><button class="btn" onclick="cancelDraft('${order.id}')">Cancel</button></div>`);
 }
 function cancelDraft(id){ const o = S.orders.find(x=>x.id===id); if(o && o.status==='checked'){ o.status='cancelled'; logAudit('order', `${id} cancelled before sending`, {orderId:id}); save(); } closeModal(); render(); }
@@ -491,7 +564,7 @@ async function cancelOrder(id){
 function toggleKill(){
   if(!S.kill){ setKill(true, 'Manual'); return; }
   const code = String(Math.floor(100000 + Math.random()*900000));
-  openModal(`<h3>Turn trading back on?</h3><p class="muted small">Turning the kill switch off needs step-up confirmation.</p><div class="row"><input type="text" id="killcode" maxlength="6" placeholder="6-digit code" style="width:140px"><span class="small muted">Demo authenticator: <span class="mono">${code}</span></span></div><div class="row" style="margin-top:14px"><button class="btn primary" onclick="if($('killcode').value==='${code}'){setKill(false,'Manual');closeModal();}else toast('Code does not match')">Resume trading</button><button class="btn" onclick="closeModal()">Keep halted</button></div>`);
+  openModal(`<h3>Turn trading back on?</h3><p class="muted small">Turning the kill switch off needs step-up confirmation.</p><div class="row"><input type="text" id="killcode" maxlength="6" placeholder="6-digit code" style="width:140px"><span class="small muted">Authenticator code (simulation): <span class="mono">${code}</span></span></div><div class="row" style="margin-top:14px"><button class="btn primary" onclick="if($('killcode').value==='${code}'){setKill(false,'Manual');closeModal();}else toast('Code does not match')">Resume trading</button><button class="btn" onclick="closeModal()">Keep halted</button></div>`);
 }
 async function setKill(on, why){
   S.kill = on;
@@ -523,7 +596,7 @@ async function reconcile(){
   S.lastRecon = {ts:Date.now(), issues};
   logAudit('reconcile', issues.length ? `${issues.length} break(s) found` : 'All orders and holdings match');
   if(issues.length){
-    openCase('Reconciliation break', issues.join(' · '), {});
+    openCase('Reconciliation break', issues.join('; '), {});
     if(issues.some(i=>i.includes('not created by SignalDesk'))) recordAnomaly('Unknown broker order', 'An order exists at the broker that SignalDesk did not send. Possible key misuse: consider revoking the execution key.');
   }
   save(); render(); toast(issues.length ? `${issues.length} reconciliation break(s): case opened` : 'Reconciled: everything matches');
@@ -583,16 +656,32 @@ function revokeKey(id){ const k = S.keys.find(x=>x.id===id); k.status='revoked';
 let tab = 'research', prefill = null;
 const TABS = [['research','Research'],['theses','Theses'],['trade','Trade'],['scam','Scam check'],['signals','Risk signals'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
 function setTab(t){ tab = t; try{ history.replaceState(null,'','#'+t); }catch(e){} render(); }
+const NAV_GROUPS = [['Research',['research','theses']],['Trading',['trade','queue','audit']],['Protection',['scam','signals','account','rules']]];
+const ICONS = {
+  research:'<path d="M2.5 13.5h11M3.5 10.5l3-3 2.5 2 4-4.5"/>',
+  theses:'<path d="M4 2.5h5.5l2.5 2.5v8.5H4z"/><path d="M6 7.5h4M6 10h4"/>',
+  trade:'<path d="M3 5.5h9.5L10 3M13 10.5H3.5L6 13"/>',
+  queue:'<path d="M2.5 9.5l1.8-6h7.4l1.8 6v4h-11z"/><path d="M2.5 9.5h3.5l1 1.5h2l1-1.5h3.5"/>',
+  audit:'<path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5M3 4.5h.5M3 8h.5M3 11.5h.5"/>',
+  scam:'<path d="M8 2l5 2v3.8c0 3-2.2 5.1-5 6.2-2.8-1.1-5-3.2-5-6.2V4z"/><path d="M8 5.5v3M8 10.6v.4"/>',
+  signals:'<path d="M2 8.5h2.2l1.8-4.5 3 9 2-4.5H14"/>',
+  account:'<circle cx="5.5" cy="8" r="2.8"/><path d="M8.3 8H14M12 8v2M10.2 8v1.5"/>',
+  rules:'<path d="M3 4.5h10M3 8h10M3 11.5h10"/><path d="M6 3v3M10 6.5v3M5 10v3"/>'
+};
 function renderTabs(){
   const open = S.cases.filter(c=>c.status==='open').length; const anom = S.anomalies.filter(a=>!a.ack).length;
-  $('tabs').innerHTML = TABS.map(([id,l]) => `<button class="${tab===id?'on':''}" onclick="setTab('${id}')">${l}${id==='queue'&&open?`<span class="badge">${open}</span>`:''}${id==='account'&&anom?`<span class="badge">${anom}</span>`:''}</button>`).join('');
+  const label = id => (TABS.find(t=>t[0]===id)||[])[1];
+  $('tabs').innerHTML = NAV_GROUPS.map(([g, ids]) => `<div class="grp">${g}</div>` + ids.map(id => `<button class="${tab===id?'on':''}" onclick="setTab('${id}')" ${tab===id?'aria-current="page"':''}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[id]}</svg><span>${label(id)}</span>${id==='queue'&&open?`<span class="badge">${open}</span>`:''}${id==='account'&&anom?`<span class="badge">${anom}</span>`:''}</button>`).join('')).join('');
 }
 function updateHeader(){
   $('k-port').textContent = usd(portfolioValue(), 0);
   $('k-bp').textContent = usd(S.cash, 0);
   $('k-cases').textContent = S.cases.filter(c=>c.status==='open').length;
   const m = modeLabel(); const el = $('k-mode'); el.className = 'mode '+m.cls; el.textContent = m.text;
-  const k = $('k-kill'); k.classList.toggle('on', S.kill); k.textContent = 'Kill switch: ' + (S.kill?'ON':'off');
+  const k = $('k-kill'); k.classList.toggle('on', S.kill);
+  k.innerHTML = `<span class="led"></span><span><b>Kill switch</b><small>${S.kill ? 'All trading halted' : 'Trading enabled'}</small></span><span class="state">${S.kill ? 'ON' : 'off'}</span>`;
+  const t = TABS.find(x=>x[0]===tab); const g = NAV_GROUPS.find(x=>x[1].includes(tab));
+  $('k-where').innerHTML = liveMode() ? (bridge.status.dry_run ? '<b>Dry run.</b> Orders are signed but not sent to Robinhood.' : '<b>Live.</b> Confirmed orders go to Robinhood.') : '<b>Simulated environment.</b> Nothing reaches Robinhood.';
 }
 function render(){
   applyPending(false);
@@ -638,7 +727,7 @@ function viewResearch(){
   return `<h2>Research</h2><p class="sub">Explainable rankings for ${S.assets.length} assets. Pick a research style; each score shows what lifts it and what weakens it.</p>
   <div class="banner">The research inputs below are sample values for the demo, not live market data. Select <b>Edit inputs</b> to replace them with your own research. ${src}</div>
   <div class="row" style="margin-bottom:14px"><div class="seg">${Object.entries(STYLES).map(([k,s])=>`<button class="${S.style===k?'on':''}" onclick="setStyle('${k}')">${s.label}</button>`).join('')}</div>
-  <span class="muted small">Weights: ${Object.entries(style.w).map(([k,w])=>FACTOR_NAMES[k]+' '+Math.round(w*100)+'%').join(' · ')}</span>
+  <span class="muted small">Weights: ${Object.entries(style.w).map(([k,w])=>FACTOR_NAMES[k]+' '+Math.round(w*100)+'%').join(', ')}</span>
   <button class="btn sm right" onclick="toggleEdit()">${editing?'Done editing':'Edit inputs'}</button></div>
   <div class="panel" style="overflow-x:auto"><table><tr><th></th><th class="num">Rank</th><th>Asset</th><th class="num">Price</th><th>Fit score</th><th class="num">${editing?'30d return %':'30d vs BTC'}</th><th class="num">Volatility</th><th class="num">90d drawdown</th><th class="num">24h volume</th><th>Unlock risk</th><th>Security</th><th>Why it ranks here</th><th>Compare</th></tr>${rows}</table></div>
   ${cmp}`;
@@ -656,7 +745,7 @@ function toggleEdit(){
 
 function viewTheses(){
   const cards = S.theses.map(t => { const st = thesisStatus(t); const q = M[t.sym];
-    return `<div class="card"><div class="row"><h4>${t.id} · ${t.sym}</h4><span class="chip ${st.cls}">${st.label}</span><span class="muted small right">Price ${px(q?q.mid:0)}</span></div>
+    return `<div class="card"><div class="row"><h4>${t.sym} <span class="muted" style="font-weight:500">thesis ${t.id}</span></h4><span class="chip ${st.cls}">${st.label}</span><span class="muted small right">Price ${px(q?q.mid:0)}</span></div>
       <div class="kv" style="margin-top:6px"><div>Thesis</div><div>${esc(t.statement)}</div><div>What would invalidate it</div><div>${esc(t.invalidation)}</div><div>Review by</div><div>${t.review}</div>
       <div>Risk triggers</div><div>${(t.triggers||[]).map(tr=>`<span class="chip ${st.fired.includes(tr)?'block':'mutedc'}">price ${tr.kind} ${px(tr.price)}</span>`).join(' ') || '<span class="muted">none</span>'}</div>
       <div>Notes</div><div><textarea rows="2" style="width:100%" onchange="setNote('${t.id}', this.value)">${esc(t.notes)}</textarea></div></div>
@@ -678,7 +767,7 @@ function setNote(id, v){ const t = S.theses.find(x=>x.id===id); t.notes = v; sav
 
 function quoteBox(){
   const f = $('ticket'); const sym = f ? f.sym.value : 'BTC'; const q = M[sym];
-  return `<div class="kv"><div>Bid</div><div class="mono">${px(q.bid)}</div><div>Ask</div><div class="mono">${px(q.ask)}</div><div>Spread</div><div class="mono">${q.spread.toFixed(2)}%</div><div>Held</div><div class="mono">${qty(S.holdings[sym]||0)} ${sym}</div></div>`;
+  return `<div class="kv"><div>Bid</div><div>${px(q.bid)}</div><div>Ask</div><div>${px(q.ask)}</div><div>Spread</div><div>${q.spread.toFixed(2)}%</div><div>Held</div><div>${qty(S.holdings[sym]||0)} ${sym}</div></div>`;
 }
 function statusChip(s){ const map = {blocked:'block', failed:'block', filled:'pass', open:'info', submitted:'info', checked:'mutedc', cancelled:'mutedc', 'dry-run':'warn'}; return `<span class="chip ${map[s]||'mutedc'}">${s}</span>`; }
 function orderTable(){
@@ -693,7 +782,7 @@ function resultsTable(results){
 }
 function showOrder(id){
   const o = S.orders.find(x=>x.id===id);
-  openModal(`<h3>${o.id}</h3><div class="kv"><div>Order</div><div>${o.side} ${qty(o.qty)} ${o.sym} · ${o.type}${o.limit?' @ '+px(o.limit):''}</div><div>Status</div><div>${statusChip(o.status)}</div><div>Client order ID</div><div class="mono">${o.clientOrderId}</div><div>Broker order ID</div><div class="mono">${o.brokerId||'–'}</div><div>Thesis</div><div>${o.thesisId||'–'}</div><div>Rank at check</div><div>#${o.rank}</div>${o.avgPrice?`<div>Filled</div><div>${qty(o.filledQty)} @ ${px(o.avgPrice)}</div>`:''}${o.error?`<div>Error</div><div>${esc(o.error)}</div>`:''}</div>
+  openModal(`<h3>${o.id}</h3><div class="kv"><div>Order</div><div>${o.side} ${qty(o.qty)} ${o.sym}, ${o.type}${o.limit?' @ '+px(o.limit):''}</div><div>Status</div><div>${statusChip(o.status)}</div><div>Client order ID</div><div class="mono">${o.clientOrderId}</div><div>Broker order ID</div><div class="mono">${o.brokerId||'–'}</div><div>Thesis</div><div>${o.thesisId||'–'}</div><div>Rank at check</div><div>#${o.rank}</div>${o.avgPrice?`<div>Filled</div><div>${qty(o.filledQty)} @ ${px(o.avgPrice)}</div>`:''}${o.error?`<div>Error</div><div>${esc(o.error)}</div>`:''}</div>
   <h3 style="margin-top:14px">Rule results</h3>${resultsTable(o.results||[])}
   ${o.preview?`<h3 style="margin-top:14px">Signed request (dry run, not sent)</h3><pre class="code">${esc(JSON.stringify(o.preview,null,2))}</pre>`:''}
   <div class="row" style="margin-top:14px"><button class="btn" onclick="closeModal()">Close</button></div>`);
@@ -715,7 +804,7 @@ function viewTrade(){
     <div class="panel"><h3>Live quote</h3><div id="quotebox">${quoteBox()}</div>
     ${lastChecked && lastChecked.results ? `<h3 style="margin-top:14px">Last check: ${lastChecked.id} ${statusChip(lastChecked.status)}</h3>${resultsTable(lastChecked.results)}`:''}</div>
   </div>
-  <div class="panel"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Orders</h3><button class="btn sm right" onclick="reconcile()">Reconcile now</button>${!liveMode()?`<button class="btn sm" onclick="injectMismatch('unknown')">Demo: inject unknown broker order</button><button class="btn sm" onclick="injectMismatch('partial')">Demo: inject partial fill</button>`:''}</div>
+  <div class="panel"><div class="row" style="margin-bottom:8px"><h3 style="margin:0">Orders</h3><button class="btn sm right" onclick="reconcile()">Reconcile now</button>${!liveMode()?`<button class="btn sm" onclick="injectMismatch('unknown')">Simulate unknown broker order</button><button class="btn sm" onclick="injectMismatch('partial')">Simulate partial fill</button>`:''}</div>
   ${S.lastRecon?`<div class="small muted" style="margin-bottom:8px">Last reconciled ${when(S.lastRecon.ts)}: ${S.lastRecon.issues.length?S.lastRecon.issues.length+' break(s), see Review queue':'all matched'}</div>`:''}
   <div id="orderlist" style="overflow-x:auto">${orderTable()}</div></div>`;
 }
@@ -731,7 +820,7 @@ function wireTicket(){
 
 function viewQueue(){
   const open = S.cases.filter(c=>c.status==='open'), done = S.cases.filter(c=>c.status!=='open');
-  const card = c => `<div class="card"><div class="row"><h4>${c.id} · ${esc(c.kind)}</h4>${c.status==='open'?'<span class="chip block">open</span>':`<span class="chip pass">${esc(c.resolution)}</span>`}<span class="small muted right">${when(c.ts)}</span></div>
+  const card = c => `<div class="card"><div class="row"><h4>${esc(c.kind)} <span class="muted" style="font-weight:500">${c.id}</span></h4>${c.status==='open'?'<span class="chip block">open</span>':`<span class="chip pass">${esc(c.resolution)}</span>`}<span class="small muted right">${when(c.ts)}</span></div>
     <div class="small" style="margin:6px 0">${esc(c.summary)}</div>
     ${c.evidence?`<details><summary class="small muted" style="cursor:pointer">Evidence: rule results for ${c.orderId}</summary>${resultsTable(c.evidence)}</details>`:''}
     ${c.status==='open'?`<div class="row" style="margin-top:8px"><input type="text" id="note-${c.id}" placeholder="Resolution note" class="flex1"><button class="btn sm" onclick="resolveCase('${c.id}','Approved')">Approve and re-ticket</button><button class="btn sm" onclick="resolveCase('${c.id}','Cancelled')">Cancel</button><button class="btn sm" onclick="resolveCase('${c.id}','Rule tuned')">Rule tuned</button></div>`:(c.note?`<div class="small muted">Note: ${esc(c.note)}</div>`:'')}</div>`;
@@ -761,13 +850,13 @@ function viewAccount(){
     <td>${k.status==='active'?`<button class="btn sm" onclick="rotateKey('${k.id}')">Rotate</button> <button class="btn sm danger" onclick="revokeKey('${k.id}')">Revoke</button>`:''}</td></tr>`; }).join('');
   const b = bridge.status;
   const bridgePanel = ON_BRIDGE ? `<div class="kv"><div>Bridge</div><div>${b ? (b.configured?'<span class="chip pass">connected</span>':'<span class="chip warn">no API key configured</span>') : 'checking…'}</div>
-    ${b&&b.configured?`<div>API key</div><div class="mono">${esc(b.api_key_masked)}</div><div>Mode</div><div>${b.dry_run?'<span class="chip warn">dry run</span> requests are signed but not sent':'<span class="chip block">LIVE</span> orders reach Robinhood'}</div><div>Order endpoint</div><div class="mono">${esc(b.order_path)}</div><div>Bridge limits</div><div class="small">Max order ${usd(b.max_order_usd,0)} · symbols ${esc((b.allowed_symbols||[]).join(', '))} · ${b.rate_limit_per_min}/min</div><div>Signature failures</div><div>${b.auth_failures||0}</div>`:''}
+    ${b&&b.configured?`<div>API key</div><div class="mono">${esc(b.api_key_masked)}</div><div>Mode</div><div>${b.dry_run?'<span class="chip warn">dry run</span> requests are signed but not sent':'<span class="chip block">LIVE</span> orders reach Robinhood'}</div><div>Order endpoint</div><div class="mono">${esc(b.order_path)}</div><div>Bridge limits</div><div class="small">Max order ${usd(b.max_order_usd,0)}, symbols ${esc((b.allowed_symbols||[]).join(', '))}, ${b.rate_limit_per_min}/min</div><div>Signature failures</div><div>${b.auth_failures||0}</div>`:''}
     </div><div class="row" style="margin-top:10px"><label class="row small"><input type="checkbox" ${S.forceSim?'checked':''} onchange="S.forceSim=this.checked;save();location.reload()"> Force simulation mode</label></div>`
     : `<div class="small muted">This page is running hosted, so it can only simulate. To trade through Robinhood, run the SignalDesk bridge on your computer (<span class="mono">python bridge.py</span>) and open the address it prints. The bridge keeps your private key on your machine and signs each request.</div>`;
   return `<h2>Account & keys</h2><p class="sub">The API key can trade without a login, so it gets the strictest controls: least privilege, rotation, revocation and anomaly alerts.</p>
   <div class="banner info">Got a message saying your account is locked or your funds are at risk? <a href="#scam">Check it in Scam check</a> before you click anything.</div>
   <div class="grid2"><div class="panel"><h3>Robinhood connection</h3>${bridgePanel}</div>
-  <div class="panel"><h3>Anomaly alerts</h3>${anoms.length?anoms.map((a,i)=>`<div class="card" style="padding:9px"><div class="row"><b class="small">${esc(a.title)}</b>${a.ack?'<span class="chip mutedc">acknowledged</span>':`<button class="btn sm right" onclick="ackAnomaly(${i})">Acknowledge</button>`}</div><div class="small muted">${when(a.ts)} · ${esc(a.detail)}</div></div>`).join(''):'<div class="empty">No anomalies.</div>'}</div></div>
+  <div class="panel"><h3>Anomaly alerts</h3>${anoms.length?anoms.map((a,i)=>`<div class="card" style="padding:9px"><div class="row"><b class="small">${esc(a.title)}</b>${a.ack?'<span class="chip mutedc">acknowledged</span>':`<button class="btn sm right" onclick="ackAnomaly(${i})">Acknowledge</button>`}</div><div class="small muted">${when(a.ts)}: ${esc(a.detail)}</div></div>`).join(''):'<div class="empty">No anomalies.</div>'}</div></div>
   <div class="panel" style="overflow-x:auto"><h3>API keys</h3><p class="small muted" style="margin-top:0">Use two keys: a read-only key for research and an execution key that only the bridge holds. Rotate every 90 days. Revoking the execution key turns on the kill switch. ${ON_BRIDGE?'':'Keys here are simulated.'}</p>
   <table><tr><th>Key</th><th>Permissions</th><th>Created</th><th>Rotate by</th><th>Status</th><th></th></tr>${keyRows}</table></div>`;
 }
@@ -861,7 +950,7 @@ function runScamCheck(){
   lastScam = {ts:Date.now(), excerpt:text.trim().slice(0,90), sender, text, ...r};
   S.scamChecks = S.scamChecks || []; S.scamChecks.unshift({ts:lastScam.ts, excerpt:lastScam.excerpt, sender, verdict:r.verdict, cls:r.cls, flags:r.findings.filter(f=>f.level==='critical'||f.level==='warn').map(f=>f.label)});
   if(S.scamChecks.length > 30) S.scamChecks.length = 30;
-  logAudit('scam-check', `${r.verdict}: "${lastScam.excerpt}${text.length>90?'…':''}"`, {rules: lastScam.findings.filter(f=>f.level!=='ok').map(f=>f.label).join(' · ')});
+  logAudit('scam-check', `${r.verdict}: "${lastScam.excerpt}${text.length>90?'…':''}"`, {rules: lastScam.findings.filter(f=>f.level!=='ok').map(f=>f.label).join('; ')});
   save(); render();
 }
 function loadScamExample(i){ const e = SCAM_EXAMPLES[i]; $('scam-text').value = e.text; $('scam-sender').value = e.sender; }
@@ -874,7 +963,7 @@ function viewScam(){
   const r = lastScam;
   const levelChip = l => ({critical:'<span class="chip block">red flag</span>', warn:'<span class="chip warn">warning</span>', info:'<span class="chip mutedc">note</span>', ok:'<span class="chip pass">ok</span>'})[l];
   const result = r ? `<div class="panel"><div class="row"><h3 style="margin:0">Result</h3><span class="chip ${r.cls}" style="font-size:13px">${r.verdict}</span></div>
-    <table style="margin-top:10px"><tr><th>Signal</th><th>Found</th><th>Why it matters</th></tr>${r.findings.length ? r.findings.map(f=>`<tr><td>${levelChip(f.level)} <b class="small">${esc(f.label)}</b></td><td class="mono" style="max-width:220px;word-break:break-all">${esc(f.evidence)}</td><td class="small">${esc(f.why)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted small">No signals matched.</td></tr>'}</table>
+    <table style="margin-top:10px"><tr><th>Signal</th><th>Found</th><th>Why it matters</th></tr>${r.findings.length ? r.findings.map(f=>`<tr><td style="min-width:160px">${levelChip(f.level)}<div class="small" style="font-weight:600;margin-top:4px">${esc(f.label)}</div></td><td class="mono" style="max-width:220px;word-break:break-all">${esc(f.evidence)}</td><td class="small">${esc(f.why)}</td></tr>`).join('') : '<tr><td colspan="3" class="muted small">No signals matched.</td></tr>'}</table>
     <h3 style="margin-top:14px">What to do</h3><ul class="small" style="margin:0;padding-left:18px">${scamGuidance(r.cls).map(g=>`<li>${esc(g)}</li>`).join('')}</ul>
     <p class="small muted" style="margin-bottom:0">This is a rule-based check for common scam patterns. It can miss new tricks, so treat "no red flags" as a second opinion, not a guarantee.</p></div>` : '';
   const hist = (S.scamChecks||[]).slice(0,10);
@@ -965,8 +1054,8 @@ function viewSignals(){
       <h3 style="margin-top:14px">What's driving it</h3>${drivers.length ? `<ul class="small" style="margin:0;padding-left:18px">${drivers.map(d=>`<li>${esc(d)}</li>`).join('')}</ul>` : '<div class="small muted">Nothing unusual. Baseline signals only.</div>'}
     </div>
     <div class="panel"><h3>Account events</h3><p class="small muted" style="margin-top:0">In a real system, vendors detect these. Here you switch them on to see how they change decisions.</p>
-      ${SIGNAL_EVENTS.map(e=>`<label class="row small" style="margin:6px 0"><input type="checkbox" ${S.signals.events[e.id]?'checked':''} onchange="toggleSignalEvent('${e.id}')"> <span>${esc(e.label)} <span class="muted">+${e.pts}, ${esc(vendorName(e.vendor))}</span></span></label>`).join('')}
-      <div class="row" style="margin-top:10px"><button class="btn sm" onclick="simulateTakeover()">Demo: simulate account takeover</button><button class="btn sm" onclick="clearSignals()">Clear all signals</button></div>
+      ${SIGNAL_EVENTS.map(e=>`<label class="check small" style="margin:6px 0"><input type="checkbox" ${S.signals.events[e.id]?'checked':''} onchange="toggleSignalEvent('${e.id}')"> <span>${esc(e.label)} <span class="muted">+${e.pts}, ${esc(vendorName(e.vendor))}</span></span></label>`).join('')}
+      <div class="row" style="margin-top:10px"><button class="btn sm" onclick="simulateTakeover()">Simulate account takeover</button><button class="btn sm" onclick="clearSignals()">Clear all signals</button></div>
     </div>
   </div>
   <div class="panel" style="overflow-x:auto"><h3>Signal sources</h3>
@@ -982,14 +1071,14 @@ function viewRules(){
     <td class="small">${ruleStats(r.id)}</td></tr>`).join('');
   const pend = S.pending.map(p=>`<div class="row small" style="margin:4px 0"><span>${esc(rule(p.ruleId).name)}: ${({param:'threshold',param2:'end hour',enabled:'enabled',mode:'mode'})[p.field]||esc(p.field)} ${esc(String(p.from))} → <b>${esc(String(p.value))}</b>, effective ${when(p.effective)}</span><button class="btn sm right" onclick="cancelPending('${p.id}')">Cancel</button></div>`).join('');
   return `<h2>Risk rules</h2><p class="sub">Rules are configuration, not code. Tightening applies at once; loosening waits 24 hours, so a hijacked session can't quietly remove a control. New rules start in shadow mode: they log what they would do without blocking.</p>
-  ${S.pending.length?`<div class="panel"><div class="row"><h3 style="margin:0">Queued changes</h3><button class="btn sm right" onclick="applyPending(true)">Demo: fast-forward 24h</button></div>${pend}</div>`:''}
+  ${S.pending.length?`<div class="panel"><div class="row"><h3 style="margin:0">Queued changes</h3><button class="btn sm right" onclick="applyPending(true)">Fast-forward 24 hours (simulation)</button></div>${pend}</div>`:''}
   <div class="panel" style="overflow-x:auto"><table><tr><th>Rule</th><th>Category</th><th>Threshold</th><th>Mode</th><th>Status</th><th>Last 50 checks</th></tr>${rows}</table></div>
   <p class="small muted">"Last 50 checks" counts how often each rule warned or blocked, including shadow results. Use it with resolved cases to judge false positives before you enforce a rule.</p>`;
 }
 function ruleStats(id){
   const recent = S.orders.slice(0,50).filter(o=>o.results);
   let w=0,b=0,s=0; recent.forEach(o => { const r = o.results.find(x=>x.id===id); if(!r) return; if(r.shadow) s++; else if(r.outcome==='warn') w++; else if(r.outcome==='block') b++; });
-  return recent.length ? `${b} block · ${w} warn${s?` · ${s} shadow`:''}` : '<span class="muted">no checks yet</span>';
+  return recent.length ? `${b} block, ${w} warn${s?`, ${s} shadow`:''}` : '<span class="muted">no checks yet</span>';
 }
 
 /* ---------- boot ---------- */
