@@ -141,6 +141,7 @@ const FACTOR_NAMES = {mom:'Momentum vs BTC', liq:'Liquidity', risk:'Volatility &
 function defaultRules(){
   return [
     {id:'kill',     name:'Kill switch',            cat:'Global',   mode:'enforce', enabled:true, locked:true, desc:'Halts every order and cancels open ones.'},
+    {id:'signals',  name:'Outside risk signals',   cat:'Signals',  mode:'enforce', enabled:true, param:70, param2:40, unit:'account risk score from outside signals: block at (first), warn at (second)'},
     {id:'thesis',   name:'Thesis is current',      cat:'Thesis',   mode:'enforce', enabled:true, desc:'Buys need a linked thesis inside its review date with no fired risk trigger.'},
     {id:'funds',    name:'Buying power / holdings',cat:'Account',  mode:'enforce', enabled:true, desc:'Buys must fit buying power; sells must fit holdings.'},
     {id:'position', name:'Position limit',         cat:'Exposure', mode:'enforce', enabled:true, param:20,   unit:'% of total portfolio after the trade'},
@@ -178,6 +179,8 @@ function rnd4(){return Math.random().toString(16).slice(2,6)}
 /* ---------- state ---------- */
 let S = load();
 S.scamChecks = S.scamChecks || [];
+S.signals = S.signals || defaultSignals();
+if(!S.rules.find(r=>r.id==='signals')) S.rules.splice(1, 0, {id:'signals', name:'Outside risk signals', cat:'Signals', mode:'enforce', enabled:true, param:70, param2:40, unit:'account risk score from outside signals: block at (first), warn at (second)'});
 function load(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s = JSON.parse(raw); if(s && s.v===1) return s; } }catch(e){} return defaultState(); }
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
 function resetDemo(){ openModal(`<h3>Reset demo data?</h3><p class="muted">This clears theses, orders, cases, the audit log and rule settings in this browser.</p><div class="row"><button class="btn primary" onclick="S=defaultState();save();closeModal();initMarket();render();toast('Demo data reset')">Reset</button><button class="btn" onclick="closeModal()">Cancel</button></div>`); }
@@ -335,6 +338,10 @@ function evaluateOrder(o){
   const add = (id, outcome, detail) => { const r = rule(id); if(!r) return; if(!r.enabled){ R.push({id, name:r.name, outcome:'skip', detail:'Rule disabled', shadow:false}); return; } R.push({id, name:r.name, outcome, detail, shadow: r.mode==='shadow' && outcome!=='pass'}); };
 
   add('kill', S.kill ? 'block' : 'pass', S.kill ? 'Kill switch is on' : 'Trading enabled');
+  { const r = rule('signals'); if(r){ const sum = signalSummary();
+      const closedDown = sum.down.filter(v => S.signals.vendors[v.id].mode==='closed'), openDown = sum.down.filter(v => S.signals.vendors[v.id].mode==='open');
+      if(closedDown.length) add('signals','block', `${closedDown.map(v=>v.name).join(', ')} unavailable (fail-closed)`);
+      else add('signals', sum.score >= r.param ? 'block' : sum.score >= r.param2 ? 'warn' : 'pass', `Account risk ${sum.score}/100 (warn ${r.param2}, block ${r.param})${openDown.length ? '; ' + openDown.map(v=>v.name).join(', ') + ' unavailable, continued fail-open' : ''}`); } }
 
   if(o.side==='buy'){
     const t = S.theses.find(t=>t.id===o.thesisId);
@@ -574,7 +581,7 @@ function revokeKey(id){ const k = S.keys.find(x=>x.id===id); k.status='revoked';
 
 /* ---------- views ---------- */
 let tab = 'research', prefill = null;
-const TABS = [['research','Research'],['theses','Theses'],['trade','Trade'],['scam','Scam check'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
+const TABS = [['research','Research'],['theses','Theses'],['trade','Trade'],['scam','Scam check'],['signals','Risk signals'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
 function setTab(t){ tab = t; try{ history.replaceState(null,'','#'+t); }catch(e){} render(); }
 function renderTabs(){
   const open = S.cases.filter(c=>c.status==='open').length; const anom = S.anomalies.filter(a=>!a.ack).length;
@@ -591,7 +598,7 @@ function render(){
   applyPending(false);
   renderTabs(); updateHeader();
   const v = $('view');
-  v.innerHTML = ({research:viewResearch, theses:viewTheses, trade:viewTrade, queue:viewQueue, audit:viewAudit, account:viewAccount, rules:viewRules, scam:viewScam})[tab]();
+  v.innerHTML = ({research:viewResearch, theses:viewTheses, trade:viewTrade, queue:viewQueue, audit:viewAudit, account:viewAccount, rules:viewRules, scam:viewScam, signals:viewSignals})[tab]();
   if(tab==='trade') wireTicket();
 }
 function softRefresh(){
@@ -882,9 +889,94 @@ function viewScam(){
   <div class="panel"><h3>Recent checks</h3>${hist.length ? `<table><tr><th>Time</th><th>Verdict</th><th>Message</th><th>Red flags</th></tr>${hist.map(h=>`<tr><td class="small" style="white-space:nowrap">${when(h.ts)}</td><td><span class="chip ${h.cls}">${esc(h.verdict)}</span></td><td class="small">${esc(h.excerpt)}</td><td class="small">${esc(h.flags.join(', ')||'none')}</td></tr>`).join('')}</table>` : '<div class="empty">No checks yet.</div>'}</div>`;
 }
 
+/* ---------- risk signals (simulated third-party vendors) ---------- */
+const VENDORS = [
+  {id:'device',   name:'Device & login risk',          type:'Third-party vendor',    checks:'New devices, login locations, recent security changes', latency:140},
+  {id:'identity', name:'Identity verification (KYC)',  type:'Third-party vendor',    checks:'Whether the account holder is verified and still matches', latency:210},
+  {id:'chain',    name:'Blockchain analytics',         type:'Third-party vendor',    checks:'Links between your wallets and sanctioned or high-risk addresses', latency:180},
+  {id:'scam',     name:'Scam check',                   type:'Internal (SignalDesk)', checks:'Whether you recently got a message flagged as a likely scam', latency:5}
+];
+const SIGNAL_EVENTS = [
+  {id:'newDevice',   vendor:'device',   pts:30, label:'Login from a new device'},
+  {id:'newLocation', vendor:'device',   pts:25, label:'Login from a new location'},
+  {id:'recent2fa',   vendor:'device',   pts:30, label:'2FA or password changed in the last 24 hours'},
+  {id:'emailChange', vendor:'device',   pts:20, label:'Email address changed in the last 24 hours'},
+  {id:'kycPending',  vendor:'identity', pts:50, label:'Identity re-verification pending'},
+  {id:'riskyWallet', vendor:'chain',    pts:80, label:'A linked wallet has exposure to a high-risk address'}
+];
+function defaultSignals(){ const now = Date.now(); return {vendors:{device:{status:'healthy',mode:'closed',updated:now}, identity:{status:'healthy',mode:'closed',updated:now}, chain:{status:'healthy',mode:'closed',updated:now}, scam:{status:'healthy',mode:'open',updated:now}}, events:{}, alerted:false}; }
+function vendorName(id){ return (VENDORS.find(v=>v.id===id)||{}).name || id; }
+function vendorScore(id){
+  let s = {device:8, identity:5, chain:0, scam:0}[id] || 0;
+  SIGNAL_EVENTS.filter(e => e.vendor===id && S.signals.events[e.id]).forEach(e => s += e.pts);
+  if(id==='scam' && (S.scamChecks||[]).some(c => c.cls==='block' && c.ts > Date.now()-DAY)) s = 25;
+  return Math.min(100, s);
+}
+function signalSummary(){
+  const live = VENDORS.filter(v => S.signals.vendors[v.id].status !== 'down');
+  const scores = live.map(v => ({v, s:vendorScore(v.id)}));
+  const top = scores.reduce((m,x) => Math.max(m, x.s), 0);
+  const extra = scores.filter(x => x.s >= 20).length > 1 ? 10 : 0;  // several sources agreeing = more confidence
+  const down = VENDORS.filter(v => S.signals.vendors[v.id].status === 'down');
+  return {score:Math.min(100, top + extra), scores, down};
+}
+function signalBand(score){ const r = rule('signals'); if(!r) return ['Low','pass']; return score >= r.param ? ['High','block'] : score >= r.param2 ? ['Elevated','warn'] : ['Low','pass']; }
+function ago(ts){ const s = Math.max(0, Math.round((Date.now()-ts)/1000)); return s < 60 ? `${s}s ago` : s < 3600 ? `${Math.floor(s/60)}m ago` : `${Math.floor(s/3600)}h ago`; }
+function afterSignalsChange(){
+  const r = rule('signals'); const sum = signalSummary();
+  if(r && sum.score >= r.param && !S.signals.alerted){ S.signals.alerted = true; recordAnomaly('High account risk from outside signals', `Account risk ${sum.score}/100. New orders are blocked until it drops.`); }
+  if(r && sum.score < r.param) S.signals.alerted = false;
+  save(); render();
+}
+function setVendor(id, field, val){
+  const v = S.signals.vendors[id]; const old = v[field]; if(old === val) return;
+  v[field] = val; if(field==='status' && val!=='down') v.updated = Date.now();
+  logAudit('signals', `${vendorName(id)}: ${field==='mode'?'if down':field} ${old} → ${val}`);
+  if(field==='status' && val==='down') recordAnomaly(`${vendorName(id)} is down`, v.mode==='closed' ? 'Fail-closed: new orders are blocked until it recovers.' : 'Fail-open: orders continue without this signal, and each one is logged.');
+  afterSignalsChange();
+}
+function toggleSignalEvent(id){ S.signals.events[id] = !S.signals.events[id]; logAudit('signals', `${SIGNAL_EVENTS.find(e=>e.id===id).label}: ${S.signals.events[id]?'on':'off'}`); afterSignalsChange(); }
+function simulateTakeover(){ ['newDevice','newLocation','recent2fa'].forEach(k => S.signals.events[k] = true); logAudit('signals','Demo: simulated account-takeover signals (new device, new location, 2FA change)'); afterSignalsChange(); toast('Takeover signals on. Try placing an order.'); }
+function clearSignals(){ const keep = S.signals.vendors; S.signals = defaultSignals(); Object.keys(keep).forEach(k => S.signals.vendors[k].mode = keep[k].mode); logAudit('signals','All signals cleared and vendors set healthy'); afterSignalsChange(); }
+function viewSignals(){
+  const r = rule('signals'); const sum = signalSummary(); const [band, cls] = signalBand(sum.score);
+  const closedDown = sum.down.filter(v => S.signals.vendors[v.id].mode==='closed'), openDown = sum.down.filter(v => S.signals.vendors[v.id].mode==='open');
+  const decision = !r || !r.enabled ? ['Signals rule is off','mutedc'] : closedDown.length ? ['Orders blocked: a fail-closed vendor is down','block'] : cls==='block' ? ['Orders blocked: account risk is high','block'] : cls==='warn' ? ['Orders need extra confirmation','warn'] : ['Orders allowed','pass'];
+  const drivers = [];
+  SIGNAL_EVENTS.filter(e => S.signals.events[e.id]).forEach(e => drivers.push(`${e.label} (+${e.pts}, from ${vendorName(e.vendor)})`));
+  if(vendorScore('scam') > 0) drivers.push('A message you checked recently was flagged as a likely scam (from Scam check)');
+  closedDown.forEach(v => drivers.push(`${v.name} is down and set to fail-closed`));
+  openDown.forEach(v => drivers.push(`${v.name} is down; continuing without it (fail-open)`));
+  const rows = VENDORS.map(v => { const st = S.signals.vendors[v.id]; const sc = st.status==='down' ? null : vendorScore(v.id);
+    return `<tr>
+      <td><b>${esc(v.name)}</b><div class="small muted">${esc(v.type)}</div></td>
+      <td class="small">${esc(v.checks)}</td>
+      <td><select onchange="setVendor('${v.id}','status',this.value)">${['healthy','slow','down'].map(s=>`<option value="${s}" ${st.status===s?'selected':''}>${s[0].toUpperCase()+s.slice(1)}</option>`).join('')}</select></td>
+      <td class="num mono">${st.status==='down' ? '–' : (st.status==='slow' ? '2,400 ms' : v.latency + ' ms')}</td>
+      <td class="small"><span class="fresh" data-v="${v.id}">${ago(st.updated)}</span></td>
+      <td class="num">${sc==null ? '<span class="chip block">no data</span>' : `<span class="scorebar"><i style="width:${sc}%;background:${sc>=(r?r.param:70)?'var(--bad)':sc>=(r?r.param2:40)?'var(--warn)':'var(--accent)'}"></i></span><b>${sc}</b>`}</td>
+      <td><select onchange="setVendor('${v.id}','mode',this.value)"><option value="closed" ${st.mode==='closed'?'selected':''}>Fail-closed (block)</option><option value="open" ${st.mode==='open'?'selected':''}>Fail-open (allow + log)</option></select></td></tr>`; }).join('');
+  return `<h2>Risk signals</h2><p class="sub">Outside risk signals feed into every order decision, alongside the rules. These vendors are simulated, to show how signals, outages and thresholds work together.</p>
+  <div class="grid2">
+    <div class="panel"><h3>Account risk right now</h3>
+      <div class="row" style="align-items:baseline"><span style="font-size:40px;font-weight:700">${sum.score}</span><span class="muted">/ 100</span><span class="chip ${cls}" style="font-size:13px">${band}</span></div>
+      <div style="margin:8px 0"><span class="chip ${decision[1]}">${decision[0]}</span></div>
+      <div class="small muted">Warn at ${r?r.param2:40}, block at ${r?r.param:70}. Change these on <a href="#rules">Risk rules</a>.</div>
+      <h3 style="margin-top:14px">What's driving it</h3>${drivers.length ? `<ul class="small" style="margin:0;padding-left:18px">${drivers.map(d=>`<li>${esc(d)}</li>`).join('')}</ul>` : '<div class="small muted">Nothing unusual. Baseline signals only.</div>'}
+    </div>
+    <div class="panel"><h3>Account events</h3><p class="small muted" style="margin-top:0">In a real system, vendors detect these. Here you switch them on to see how they change decisions.</p>
+      ${SIGNAL_EVENTS.map(e=>`<label class="row small" style="margin:6px 0"><input type="checkbox" ${S.signals.events[e.id]?'checked':''} onchange="toggleSignalEvent('${e.id}')"> <span>${esc(e.label)} <span class="muted">+${e.pts}, ${esc(vendorName(e.vendor))}</span></span></label>`).join('')}
+      <div class="row" style="margin-top:10px"><button class="btn sm" onclick="simulateTakeover()">Demo: simulate account takeover</button><button class="btn sm" onclick="clearSignals()">Clear all signals</button></div>
+    </div>
+  </div>
+  <div class="panel" style="overflow-x:auto"><h3>Signal sources</h3>
+    <table><tr><th>Source</th><th>What it checks</th><th>Status</th><th class="num">Response time</th><th>Last update</th><th class="num">Score</th><th>If it's down</th></tr>${rows}</table>
+    <p class="small muted" style="margin-bottom:0">Fail-closed blocks orders when a source is down: safer, but more friction. Fail-open lets orders through without that signal and logs each one: smoother, but riskier. The choice is made per source, before an outage, not during one.</p></div>`;
+}
+
 function viewRules(){
   const rows = S.rules.map(r => `<tr><td><b>${esc(r.name)}</b><div class="small muted">${esc(r.desc||r.unit||'')}</div></td><td><span class="chip mutedc">${r.cat}</span></td>
-    <td>${r.param!=null?`<input type="number" step="any" class="cell" value="${r.param}" onchange="changeRule('${r.id}','param',this.value)">${r.id==='quiet'?` to <input type="number" class="cell" value="${r.param2}" onchange="changeRule('quiet','param2',this.value)">`:''}<div class="small muted">${esc(r.unit)}</div>`:'<span class="muted small">no threshold</span>'}</td>
+    <td>${r.param!=null?`<input type="number" step="any" class="cell" value="${r.param}" onchange="changeRule('${r.id}','param',this.value)">${r.param2!=null?` ${r.id==='quiet'?'to':'warn at'} <input type="number" class="cell" value="${r.param2}" onchange="changeRule('${r.id}','param2',this.value)">`:''}<div class="small muted">${esc(r.unit)}</div>`:'<span class="muted small">no threshold</span>'}</td>
     <td>${r.locked?'<span class="chip info">always on</span>':`<div class="seg"><button class="${r.mode==='enforce'?'on':''}" onclick="changeRule('${r.id}','mode','enforce')">Enforce</button><button class="${r.mode==='shadow'?'on':''}" onclick="changeRule('${r.id}','mode','shadow')">Shadow</button></div>`}</td>
     <td>${r.locked?'':`<label class="row small"><input type="checkbox" ${r.enabled?'checked':''} onchange="changeRule('${r.id}','enabled',this.checked)"> enabled</label>`}</td>
     <td class="small">${ruleStats(r.id)}</td></tr>`).join('');
@@ -907,6 +999,7 @@ function ruleStats(id){
   $('modal').addEventListener('click', e => { if(e.target.id==='modal') closeModal(); });
   initMarket(); render(); initBridge();
   setInterval(tickSim, 4000);
+  setInterval(() => { Object.values(S.signals.vendors).forEach(v => { if(v.status !== 'down') v.updated = Date.now(); }); if(tab==='signals') document.querySelectorAll('.fresh').forEach(el => { el.textContent = ago(S.signals.vendors[el.dataset.v].updated); }); }, 3000);
 })();
 </script>
 </body>
