@@ -217,7 +217,10 @@ function defaultRules(){
   return [
     {id:'kill',     name:'Kill switch',            cat:'Global',   mode:'enforce', enabled:true, locked:true, desc:'Halts every order and cancels open ones.'},
     {id:'signals',  name:'Outside risk signals',   cat:'Signals',  mode:'enforce', enabled:true, param:70, param2:40, desc:'Combined account risk from device and login, identity, blockchain and scam signals.', unit:'account risk score out of 100'},
-    {id:'chain', name:'Blockchain analytics', cat:'Signals', mode:'enforce', enabled:true, param:60, param2:25, desc:'Checks your linked wallets for links to sanctioned or high-risk addresses, like mixers or known scam wallets. Sanctioned exposure always blocks.', unit:'exposure score out of 100'},
+    {id:'chain', name:'Blockchain analytics', cat:'Signals', mode:'enforce', enabled:true, param:60, param2:25, desc:'Screens wallets whenever crypto moves in or out: deposits from outside wallets and withdrawals to new addresses, plus wallets linked to your account. Sanctioned exposure always blocks.', unit:'exposure score out of 100'},
+    {id:'wd_addr',  name:'New address hold',       cat:'Transfers',mode:'enforce', enabled:true, param:24,   desc:'Withdrawals only go to saved addresses, and a new one waits before it can be used. Stops a hijacked session from adding an address and cashing out.', unit:'hours a new withdrawal address waits before it can be used'},
+    {id:'wd_security',name:'Security change hold', cat:'Transfers',mode:'enforce', enabled:true, param:24,   desc:'Pauses withdrawals after a new device or a 2FA, password or email change. That\'s when a takeover is most likely.', unit:'hours withdrawals pause after a new device, 2FA, password or email change'},
+    {id:'wd_cap',   name:'Daily withdrawal cap',   cat:'Transfers',mode:'enforce', enabled:true, param:2000, desc:'Limits how much can leave the account in a day, so one bad session can\'t empty it.', unit:'USD of withdrawals in a rolling 24h'},
     {id:'thesis',   name:'Thesis is current',      cat:'Thesis',   mode:'enforce', enabled:true, desc:'Buys need a linked thesis inside its review date with no fired risk trigger.'},
     {id:'funds',    name:'Buying power / holdings',cat:'Account',  mode:'enforce', enabled:true, desc:'Buys must fit buying power; sells must fit holdings.'},
     {id:'position', name:'Position limit',         cat:'Exposure', mode:'enforce', enabled:true, param:20,   unit:'% of total portfolio after the trade'},
@@ -299,13 +302,13 @@ function defaultState(){
     ],
     cash:10000, holdings:{BTC:0.02, ETH:0.5},
     broker:{orders:{}, holdings:{BTC:0.02, ETH:0.5}},
-    orders:[], cases:[], audit:seedHistory(), historySeeded:true, anomalies:[], pending:[],
+    orders:[], cases:[], audit:seedHistory(), historySeeded:true, addresses:[], transfers:[], anomalies:[], pending:[],
     rules:defaultRules(), kill:false, settingsChangedAt:0, forceSim:false,
     keys:[
       {id:'K1', label:'research-readonly', scopes:['Account read','Holdings read','Market data'], created:now-30*DAY, prefix:'rh-api-••••' + rnd4(), status:'active'},
       {id:'K2', label:'execution',          scopes:['Account read','Holdings read','Market data','Place orders','Cancel orders'], created:now-30*DAY, prefix:'rh-api-••••' + rnd4(), status:'active'}
     ],
-    seq:{order:1, case:1, thesis:3}
+    seq:{order:1, case:1, thesis:3, transfer:1}
   };
 }
 function rnd4(){return Math.random().toString(16).slice(2,6)}
@@ -317,8 +320,10 @@ if(!S.historySeeded){ S.audit = S.audit.concat(seedHistory()).sort((a,b)=>b.ts-a
 if(!S.historyRedated){ redateEntries(); S.historyRedated = true; save(); }
 S.signals = S.signals || defaultSignals();
 if(!S.rules.find(r=>r.id==='signals')) S.rules.splice(1, 0, {id:'signals', name:'Outside risk signals', cat:'Signals', mode:'enforce', enabled:true, param:70, param2:40, desc:'Combined account risk from device and login, identity, blockchain and scam signals.', unit:'account risk score out of 100'});
-S.rules.forEach(r=>{ if(r.id==='chain'){ r.desc='Checks your linked wallets for links to sanctioned or high-risk addresses, like mixers or known scam wallets. Sanctioned exposure always blocks.'; r.unit='exposure score out of 100'; } if(r.id==='signals'){ r.desc='Combined account risk from device and login, identity, blockchain and scam signals.'; r.unit='account risk score out of 100'; } });
-if(!S.rules.find(r=>r.id==='chain')){ const k = S.rules.findIndex(r=>r.id==='signals'); S.rules.splice(k+1, 0, {id:'chain', name:'Blockchain analytics', cat:'Signals', mode:'enforce', enabled:true, param:60, param2:25, desc:'Checks your linked wallets for links to sanctioned or high-risk addresses, like mixers or known scam wallets. Sanctioned exposure always blocks.', unit:'exposure score out of 100'}); }
+S.rules.forEach(r=>{ if(r.id==='chain'){ r.desc='Screens wallets whenever crypto moves in or out: deposits from outside wallets and withdrawals to new addresses, plus wallets linked to your account. Sanctioned exposure always blocks.'; r.unit='exposure score out of 100'; } if(r.id==='signals'){ r.desc='Combined account risk from device and login, identity, blockchain and scam signals.'; r.unit='account risk score out of 100'; } });
+['wd_addr','wd_security','wd_cap'].forEach(id => { const ex = S.rules.find(r=>r.id===id); if(ex && !ex.desc) ex.desc = defaultRules().find(r=>r.id===id).desc; if(!S.rules.find(r=>r.id===id)){ const d = defaultRules().find(r=>r.id===id); const k = S.rules.findIndex(r=>r.id==='thesis'); S.rules.splice(k<0?S.rules.length:k, 0, d); } });
+S.addresses = S.addresses || []; S.transfers = S.transfers || []; S.seq.transfer = S.seq.transfer || 1;
+if(!S.rules.find(r=>r.id==='chain')){ const k = S.rules.findIndex(r=>r.id==='signals'); S.rules.splice(k+1, 0, {id:'chain', name:'Blockchain analytics', cat:'Signals', mode:'enforce', enabled:true, param:60, param2:25, desc:'Screens wallets whenever crypto moves in or out: deposits from outside wallets and withdrawals to new addresses, plus wallets linked to your account. Sanctioned exposure always blocks.', unit:'exposure score out of 100'}); }
 function load(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s = JSON.parse(raw); if(s && s.v===1) return s; } }catch(e){} return defaultState(); }
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
 function resetDemo(){ openModal(`<h3>Reset demo data?</h3><p class="muted">This clears theses, orders, cases, the audit log and rule settings in this browser.</p><div class="row"><button class="btn primary" onclick="S=defaultState();save();closeModal();initMarket();render();toast('Demo data reset')">Reset</button><button class="btn" onclick="closeModal()">Cancel</button></div>`); }
@@ -696,7 +701,7 @@ function resolveCase(id, resolution){
 function changeRule(id, field, value){
   const r = rule(id); const old = r[field];
   let looser = false;
-  if(field==='param' && id!=='quiet') looser = +value > +old;
+  if(field==='param' && id!=='quiet') looser = (id==='wd_addr' || id==='wd_security') ? +value < +old : +value > +old;
   if(field==='param2' && (id==='signals' || id==='chain')) looser = +value > +old;
   if(field==='enabled') looser = !value;
   if(field==='mode') looser = value==='shadow';
@@ -713,7 +718,7 @@ function changeRule(id, field, value){
 }
 function applyPending(force){
   const now = Date.now(); let n=0;
-  S.pending = S.pending.filter(p => { if(force || p.effective <= now){ const r = rule(p.ruleId); r[p.field] = p.field==='param'?+p.value:p.value; S.settingsChangedAt = now; logAudit('settings', `${r.name} ${p.field}: ${p.from} → ${p.value} now in effect${force?' (demo fast-forward)':''}`); n++; return false; } return true; });
+  S.pending = S.pending.filter(p => { if(force || p.effective <= now){ const r = rule(p.ruleId); r[p.field] = (p.field==='param'||p.field==='param2')?+p.value:p.value; S.settingsChangedAt = now; logAudit('settings', `${r.name} ${p.field}: ${p.from} → ${p.value} now in effect${force?' (demo fast-forward)':''}`); n++; return false; } return true; });
   if(n){ save(); render(); }
 }
 function cancelPending(pid){ S.pending = S.pending.filter(p=>p.id!==pid); logAudit('settings','Queued change cancelled'); save(); render(); }
@@ -724,13 +729,14 @@ function revokeKey(id){ const k = S.keys.find(x=>x.id===id); k.status='revoked';
 
 /* ---------- views ---------- */
 let tab = 'research', prefill = null;
-const TABS = [['research','Research'],['theses','Theses'],['trade','Trade'],['scam','Scam check'],['signals','Risk signals'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
+const TABS = [['research','Research'],['theses','Theses'],['trade','Trade'],['transfers','Transfers'],['scam','Scam check'],['signals','Risk signals'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
 function setTab(t){ tab = t; try{ history.replaceState(null,'','#'+t); }catch(e){} render(); }
-const NAV_GROUPS = [['Research',['research','theses']],['Trading',['trade','queue','audit']],['Protection',['scam','signals','account','rules']]];
+const NAV_GROUPS = [['Research',['research','theses']],['Trading',['trade','transfers','queue','audit']],['Protection',['scam','signals','account','rules']]];
 const ICONS = {
   research:'<path d="M2.5 13.5h11M3.5 10.5l3-3 2.5 2 4-4.5"/>',
   theses:'<path d="M4 2.5h5.5l2.5 2.5v8.5H4z"/><path d="M6 7.5h4M6 10h4"/>',
   trade:'<path d="M3 5.5h9.5L10 3M13 10.5H3.5L6 13"/>',
+  transfers:'<path d="M8 2.5v8M5 7.5l3 3 3-3"/><path d="M3 13.5h10"/>',
   queue:'<path d="M2.5 9.5l1.8-6h7.4l1.8 6v4h-11z"/><path d="M2.5 9.5h3.5l1 1.5h2l1-1.5h3.5"/>',
   audit:'<path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5M3 4.5h.5M3 8h.5M3 11.5h.5"/>',
   scam:'<path d="M8 2l5 2v3.8c0 3-2.2 5.1-5 6.2-2.8-1.1-5-3.2-5-6.2V4z"/><path d="M8 5.5v3M8 10.6v.4"/>',
@@ -757,7 +763,7 @@ function render(){
   applyPending(false);
   renderTabs(); updateHeader();
   const v = $('view');
-  v.innerHTML = ({research:viewResearch, theses:viewTheses, trade:viewTrade, queue:viewQueue, audit:viewAudit, account:viewAccount, rules:viewRules, scam:viewScam, signals:viewSignals})[tab]();
+  v.innerHTML = ({research:viewResearch, theses:viewTheses, trade:viewTrade, transfers:viewTransfers, queue:viewQueue, audit:viewAudit, account:viewAccount, rules:viewRules, scam:viewScam, signals:viewSignals})[tab]();
   if(tab==='trade') wireTicket();
 }
 function softRefresh(){
@@ -1103,8 +1109,8 @@ function setVendor(id, field, val){
   if(field==='status' && val==='down') recordAnomaly(`${vendorName(id)} is down`, v.mode==='closed' ? 'Fail-closed: new orders are blocked until it recovers.' : 'Fail-open: orders continue without this signal, and each one is logged.');
   afterSignalsChange();
 }
-function toggleSignalEvent(id){ S.signals.events[id] = !S.signals.events[id]; logAudit('signals', `${SIGNAL_EVENTS.find(e=>e.id===id).label}: ${S.signals.events[id]?'on':'off'}`); afterSignalsChange(); }
-function simulateTakeover(){ ['newDevice','newLocation','recent2fa'].forEach(k => S.signals.events[k] = true); logAudit('signals','Demo: simulated account-takeover signals (new device, new location, 2FA change)'); afterSignalsChange(); toast('Takeover signals on. Try placing an order.'); }
+function toggleSignalEvent(id){ S.signals.events[id] = !S.signals.events[id]; if(S.signals.events[id] && ['newDevice','recent2fa','emailChange'].includes(id)) S.signals.changedAt = Date.now(); logAudit('signals', `${SIGNAL_EVENTS.find(e=>e.id===id).label}: ${S.signals.events[id]?'on':'off'}`); afterSignalsChange(); }
+function simulateTakeover(){ S.signals.changedAt = Date.now(); ['newDevice','newLocation','recent2fa'].forEach(k => S.signals.events[k] = true); logAudit('signals','Simulated account-takeover signals (new device, new location, 2FA change)'); afterSignalsChange(); toast('Takeover signals on. Try placing an order.'); }
 function clearSignals(){ const keep = S.signals.vendors; S.signals = defaultSignals(); Object.keys(keep).forEach(k => S.signals.vendors[k].mode = keep[k].mode); logAudit('signals','All signals cleared and vendors set healthy'); afterSignalsChange(); }
 function viewSignals(){
   const r = rule('signals'); const sum = signalSummary(); const [band, cls] = signalBand(sum.score);
@@ -1155,7 +1161,7 @@ function viewRules(){
   <p class="small muted">"Last 50 checks" counts how often each rule warned or blocked, including shadow results. Use it with resolved cases to judge false positives before you enforce a rule.</p>`;
 }
 function ruleStats(id){
-  const recent = S.orders.slice(0,50).filter(o=>o.results);
+  const recent = S.orders.slice(0,50).concat((S.transfers||[]).slice(0,50)).filter(o=>o.results);
   let w=0,b=0,s=0; recent.forEach(o => { const r = o.results.find(x=>x.id===id); if(!r) return; if(r.shadow) s++; else if(r.outcome==='warn') w++; else if(r.outcome==='block') b++; });
   return recent.length ? `${b} block, ${w} warn${s?`, ${s} shadow`:''}` : '<span class="muted">no checks yet</span>';
 }
@@ -1216,12 +1222,169 @@ function fillNotes(){
   (S.cases||[]).forEach(c => { if(c.status==='resolved' && !c.note) c.note = R[c.resolution] || 'Reviewed. No further action needed.'; });
   S.notesFilled = true; save();
 }
+/* ---------- transfers: deposits and withdrawals ---------- */
+const KNOWN_ADDR = {
+  'bc1q7mylg3r0wn4ll3t8x2k9d0e5vq3p6ytr2wz': {label:'Your hardware wallet', risk:0, cat:'Self-custody, no risk history'},
+  '0x4f2a9c1e88b03d7e6f5a1b2c3d4e5f60718293ab': {label:'Coinbase deposit address', risk:5, cat:'Regulated exchange'},
+  'bc1qmx9t0rn4d0c5a7h3u2ll3r8z6k1p4w5s9yq': {label:'Unknown wallet', risk:40, cat:'Received funds from a mixing service'},
+  '0x9b8e7d6c5b4a3928170f6e5d4c3b2a1908f7e6d5': {label:'Unknown wallet', risk:85, cat:'Linked to reported scam wallets'},
+  '0x7f367cc41522ce07553e823bf3be79a889debe1b': {label:'Unknown wallet', risk:100, cat:'Sanctioned address (OFAC SDN list)', sanctioned:true}
+};
+const SAMPLE_ADDR = [
+  ['bc1q7mylg3r0wn4ll3t8x2k9d0e5vq3p6ytr2wz','My hardware wallet (clean)'],
+  ['0x4f2a9c1e88b03d7e6f5a1b2c3d4e5f60718293ab','Coinbase account (low risk)'],
+  ['bc1qmx9t0rn4d0c5a7h3u2ll3r8z6k1p4w5s9yq','Wallet that used a mixer'],
+  ['0x9b8e7d6c5b4a3928170f6e5d4c3b2a1908f7e6d5','Wallet linked to scams'],
+  ['0x7f367cc41522ce07553e823bf3be79a889debe1b','Sanctioned address']
+];
+function screenAddress(addr){
+  const a = (addr||'').trim(); const k = KNOWN_ADDR[a] || KNOWN_ADDR[a.toLowerCase()];
+  if(k) return {...k};
+  return {label:'Unknown wallet', risk:10, cat:'No risk history found'};
+}
+function addrValid(sym, a){ a = (a||'').trim(); return sym==='BTC' ? /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,62}$/.test(a) : /^0x[0-9a-fA-F]{40}$/.test(a) || /^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,62}$/.test(a); }
+function shortAddr(a){ return a.length > 18 ? a.slice(0,8) + '…' + a.slice(-6) : a; }
+function addrEntry(a){ return (S.addresses||[]).find(x => x.addr === a.trim()); }
+function securityChangeAt(){
+  const ev = S.signals.events; const on = ['newDevice','recent2fa','emailChange'].filter(e => ev[e]);
+  return on.length ? {when: S.signals.changedAt || Date.now(), what: on.map(e => SIGNAL_EVENTS.find(x=>x.id===e).label)} : null;
+}
+function chainCheck(add, scr){
+  const r = rule('chain'); if(!r) return; const v = S.signals.vendors.chain;
+  if(v && v.status==='down'){ add('chain', v.mode==='closed'?'block':'pass', v.mode==='closed' ? 'Blockchain analytics unavailable (fail-closed)' : 'Blockchain analytics unavailable; continued fail-open'); return; }
+  if(scr.sanctioned) { add('chain','block','Sanctioned address. Hard stop; needs compliance review.'); return; }
+  const sc = Math.max(scr.risk, vendorScore('chain'));
+  add('chain', sc >= r.param ? 'block' : sc >= r.param2 ? 'warn' : 'pass', `${scr.cat}. Exposure ${sc}/100 (warn ${r.param2}, block ${r.param})`);
+}
+function evaluateTransfer(t){
+  const R = [];
+  const add = (id, outcome, detail) => { const r = rule(id); if(!r) return; if(!r.enabled){ R.push({id, name:r.name, outcome:'skip', detail:'Rule disabled', shadow:false}); return; } R.push({id, name:r.name, outcome, detail, shadow: r.mode==='shadow' && outcome!=='pass'}); };
+  const scr = screenAddress(t.addr);
+  if(t.kind==='withdraw'){
+    add('kill', S.kill ? 'block' : 'pass', S.kill ? 'Kill switch is on' : 'Transfers enabled');
+    const have = S.holdings[t.sym]||0; add('funds', t.qty <= have ? 'pass' : 'block', `Withdrawing ${qty(t.qty)} of ${qty(have)} ${t.sym} held`);
+    { const r = rule('wd_addr'); const e = addrEntry(t.addr);
+      if(!e) add('wd_addr','block','Address is not in your address book. Add it first; new addresses wait ' + r.param + 'h.');
+      else { const ready = e.added + r.param*3600e3; add('wd_addr', Date.now() >= ready ? 'pass' : 'block', Date.now() >= ready ? `Saved address "${e.label}", added ${when(e.added)}` : `New address, usable from ${when(ready)}`); } }
+    { const r = rule('wd_security'); const sc = securityChangeAt();
+      if(!sc) add('wd_security','pass','No recent security changes');
+      else { const until = sc.when + r.param*3600e3; add('wd_security', Date.now() >= until ? 'pass' : 'block', `${sc.what.join(', ')}. Withdrawals paused until ${when(until)}`); } }
+    { const r = rule('wd_cap'); const since = Date.now() - DAY; const sent = (S.transfers||[]).filter(x => x.kind==='withdraw' && x.status==='sent' && x.ts > since).reduce((a,x)=>a + x.usd, 0);
+      add('wd_cap', sent + t.usd > r.param ? 'block' : sent + t.usd > r.param*0.8 ? 'warn' : 'pass', `${usd(sent + t.usd,0)} in the last 24h including this one (cap ${usd(r.param,0)})`); }
+    { const r = rule('signals'); if(r){ const sum = signalSummary(); add('signals', sum.score >= r.param ? 'block' : sum.score >= r.param2 ? 'warn' : 'pass', `Account risk ${sum.score}/100 (warn ${r.param2}, block ${r.param})`); } }
+  }
+  chainCheck(add, scr);
+  const blocks = R.filter(r => r.outcome==='block' && !r.shadow), warns = R.filter(r => r.outcome==='warn' && !r.shadow);
+  return {results:R, blocks, warns, blocked: blocks.length>0, screen:scr};
+}
+let lastTransfer = null, xferDir = 'withdraw', xferStep = null, xferForm = {sym:'BTC', qty:'', addr:''};
+function runTransfer(){
+  const f = $('xfer'); const sym = f.sym.value, q = parseFloat(f.qty.value), addr = f.addr.value.trim();
+  xferForm = {sym, qty:f.qty.value, addr};
+  if(!(q>0)) { toast('Enter an amount above zero'); return; }
+  if(!addrValid(sym, addr)) { toast('That does not look like a valid ' + sym + ' address'); return; }
+  const t = {id:'X'+(S.seq.transfer++), kind:xferDir, sym, qty:q, addr, usd: q*(M[sym]?M[sym].mid:0), ts:Date.now()};
+  const ev = evaluateTransfer(t); t.results = ev.results; t.screen = ev.screen;
+  const label = t.kind==='withdraw' ? 'Withdrawal' : 'Deposit';
+  if(t.kind==='deposit'){
+    if(ev.screen.sanctioned){ t.status='frozen'; openCase('Sanctioned deposit', `${t.id}: ${qty(q)} ${sym} from ${shortAddr(addr)} frozen. ${ev.screen.cat}.`, {}); }
+    else if(ev.blocked){ t.status='held'; openCase('Deposit held', `${t.id}: ${qty(q)} ${sym} from ${shortAddr(addr)} held for review. ${ev.screen.cat}.`, {}); }
+    else { t.status='credited'; S.holdings[sym] = +((S.holdings[sym]||0)+q).toFixed(10); S.broker.holdings[sym] = +((S.broker.holdings[sym]||0)+q).toFixed(10);
+      if(ev.warns.length) openCase('Deposit flagged', `${t.id}: ${qty(q)} ${sym} credited but flagged. ${ev.screen.cat}.`, {}); }
+  } else {
+    if(ev.blocked){ t.status='blocked'; openCase('Blocked withdrawal', `${t.id}: ${qty(q)} ${sym} to ${shortAddr(addr)} blocked by ${ev.blocks.map(b=>b.name).join(', ')}`, {}); }
+    else { t.status='checked'; xferStep = String(Math.floor(100000 + Math.random()*900000)); }
+  }
+  S.transfers.unshift(t);
+  logAudit('transfer', `${t.id} ${label.toLowerCase()} ${qty(q)} ${sym} ${t.kind==='withdraw'?'to':'from'} ${shortAddr(addr)}: ${t.status.toUpperCase()}`, {rules: ev.results.map(r=>r.id+':'+r.outcome).join(' ')});
+  lastTransfer = t; save(); render();
+}
+function confirmWithdraw(id){
+  const t = S.transfers.find(x=>x.id===id); if(!t || t.status!=='checked') return;
+  const acks = [...document.querySelectorAll('.xack')]; if(acks.some(a=>!a.checked)){ toast('Acknowledge every warning first'); return; }
+  if((($('xstep')||{}).value||'') !== xferStep){ toast('Step-up code does not match'); logAudit('security', `${id}: withdrawal step-up code failed`); save(); return; }
+  const ev = evaluateTransfer(t); if(ev.blocked){ t.status='blocked'; t.results=ev.results; openCase('Blocked withdrawal', `${t.id}: conditions changed before confirmation`, {}); save(); render(); return; }
+  t.status='sent'; t.ts = Date.now();
+  S.holdings[t.sym] = +((S.holdings[t.sym]||0)-t.qty).toFixed(10); S.broker.holdings[t.sym] = +((S.broker.holdings[t.sym]||0)-t.qty).toFixed(10);
+  logAudit('transfer', `${t.id} withdrawal confirmed with step-up code and sent (simulated)`); toast('Withdrawal sent (simulated)'); save(); render();
+}
+function cancelWithdraw(id){ const t = S.transfers.find(x=>x.id===id); if(t && t.status==='checked'){ t.status='cancelled'; logAudit('transfer', `${id} withdrawal cancelled before sending`); save(); } render(); }
+function addAddress(){
+  const f = $('addrform'); const a = f.addr.value.trim(), label = f.label.value.trim() || 'Saved address';
+  if(!addrValid('ETH', a)) { toast('Enter a valid BTC or ETH address'); return; }
+  if(addrEntry(a)) { toast('That address is already saved'); return; }
+  const scr = screenAddress(a);
+  if(scr.sanctioned){ logAudit('security', `Blocked adding sanctioned address ${shortAddr(a)} to address book`); openCase('Sanctioned address', `Tried to save ${shortAddr(a)} to the address book. ${scr.cat}.`, {}); save(); render(); toast('Sanctioned address. It cannot be saved.'); return; }
+  S.addresses.unshift({addr:a, label, added:Date.now(), risk:scr.risk, cat:scr.cat});
+  logAudit('settings', `Address "${label}" (${shortAddr(a)}) added; usable after ${rule('wd_addr').param}h hold`); save(); render();
+}
+function removeAddress(a){ S.addresses = S.addresses.filter(x=>x.addr!==a); logAudit('settings', `Address ${shortAddr(a)} removed from address book`); save(); render(); }
+function skipAddressHold(){ S.addresses.forEach(x => x.added -= DAY*2); if(S.signals.changedAt) S.signals.changedAt -= DAY*2; logAudit('demo','Fast-forwarded transfer holds by 48 hours (simulation)'); save(); render(); }
+function useSample(a){ const f = $('xfer'); if(f) f.addr.value = a; }
+function setXferDir(d){ xferDir = d; lastTransfer = null; render(); }
+function xferChip(st){ return `<span class="chip ${({sent:'pass',credited:'pass',checked:'info',cancelled:'mutedc',blocked:'block',held:'warn',frozen:'block'})[st]||'mutedc'}">${st}</span>`; }
+function viewTransfers(){
+  const t = lastTransfer; const syms = Object.keys(M).length ? Object.keys(M) : ['BTC','ETH'];
+  const res = t ? `<div class="panel"><div class="row"><h3 style="margin:0">${t.kind==='withdraw'?'Withdrawal':'Deposit'} ${t.id}</h3>${xferChip(t.status)}</div>
+    <div class="kv" style="margin:10px 0"><div>Amount</div><div><b>${qty(t.qty)} ${t.sym}</b> (${usd(t.usd,0)})</div><div>${t.kind==='withdraw'?'To':'From'}</div><div class="mono" style="word-break:break-all">${esc(t.addr)}</div><div>Screening</div><div>${esc(t.screen.cat)}</div></div>
+    ${resultsTable(t.results)}
+    ${t.status==='checked' ? `${t.results.filter(r=>r.outcome==='warn'&&!r.shadow).map(w=>`<label class="check small" style="margin:6px 0"><input type="checkbox" class="xack"> <span><span class="chip warn">Warn</span> <b>${esc(w.name)}</b>: ${esc(w.detail)}</span></label>`).join('')}
+      <div class="panel" style="margin-top:12px;background:var(--soft)"><b class="small">Step-up confirmation</b><div class="small muted">Every withdrawal needs a code from your authenticator.</div><div class="row" style="margin-top:8px"><input type="text" id="xstep" inputmode="numeric" maxlength="6" placeholder="6-digit code" style="width:140px"><span class="small muted">Authenticator code (simulation): <span class="mono">${xferStep}</span></span></div></div>
+      <div class="row" style="margin-top:12px"><button class="btn primary" onclick="confirmWithdraw('${t.id}')">Confirm and send</button><button class="btn" onclick="cancelWithdraw('${t.id}')">Cancel</button></div>`
+    : t.status==='blocked' ? '<p class="small" style="margin-bottom:0">Blocked. A case is open in the review queue.</p>'
+    : t.status==='frozen' ? '<p class="small" style="margin-bottom:0">Frozen and not credited. Sanctioned funds go to compliance review; they can\'t be released by the account holder.</p>'
+    : t.status==='held' ? '<p class="small" style="margin-bottom:0">Held for review and not credited yet. A case is open in the review queue.</p>'
+    : t.status==='credited' ? '<p class="small" style="margin-bottom:0">Credited to your balance.</p>' : ''}</div>`
+    : '<div class="panel"><div class="empty">Fill in the form and select <b>Run checks</b> to see how the rules treat the transfer.</div></div>';
+  const wd = rule('wd_addr').param;
+  const book = S.addresses.length ? `<table><tr><th>Label</th><th>Address</th><th>Screening</th><th>Status</th><th></th></tr>${S.addresses.map(a=>{ const ready = a.added + wd*3600e3; const ok = Date.now() >= ready; return `<tr><td><b>${esc(a.label)}</b><div class="small muted">added ${when(a.added)}</div></td><td class="mono small">${esc(shortAddr(a.addr))}</td><td class="small">${esc(a.cat)}</td><td>${ok?'<span class="chip pass">ready</span>':`<span class="chip warn">hold until ${when(ready)}</span>`}</td><td><button class="btn sm" onclick="removeAddress('${a.addr}')">Remove</button></td></tr>`; }).join('')}</table>` : '<div class="empty">No saved addresses.</div>';
+  const hist = S.transfers.length ? `<table><tr><th>Time</th><th>ID</th><th>Type</th><th>Amount</th><th>Address</th><th>Status</th></tr>${S.transfers.slice(0,25).map(x=>`<tr><td class="small" style="white-space:nowrap">${when(x.ts)}</td><td class="mono">${x.id}</td><td>${x.kind==='withdraw'?'Withdrawal':'Deposit'}</td><td>${qty(x.qty)} ${x.sym}</td><td class="mono small">${esc(shortAddr(x.addr))}</td><td>${xferChip(x.status)}</td></tr>`).join('')}</table>` : '<div class="empty">No transfers yet.</div>';
+  return `<h2>Transfers</h2><p class="sub">Move crypto in from an outside wallet, or out to one. This is where most account takeovers try to cash out, so withdrawals get the strictest checks.</p>
+  ${S.kill?'<div class="banner bad"><b>Kill switch is on.</b> Withdrawals are blocked.</div>':''}
+  <div class="grid2"><div class="panel"><h3>Move crypto</h3>
+    <div class="seg" style="margin-bottom:12px"><button class="${xferDir==='withdraw'?'on':''}" onclick="setXferDir('withdraw')">Withdraw</button><button class="${xferDir==='deposit'?'on':''}" onclick="setXferDir('deposit')">Deposit</button></div>
+    <form id="xfer" onsubmit="event.preventDefault();runTransfer()" style="display:grid;gap:10px">
+      <div class="row"><label class="f flex1">Asset<select name="sym">${syms.filter(x=>['BTC','ETH'].includes(x)).map(x=>`<option ${x===xferForm.sym?'selected':''}>${x}</option>`).join('')}</select></label><label class="f flex1">Amount<input type="number" step="any" name="qty" placeholder="e.g. 0.005" value="${esc(xferForm.qty)}"></label></div>
+      <label class="f">${xferDir==='withdraw'?'Send to address':'Coming from address'}<input type="text" name="addr" class="mono" placeholder="bc1… or 0x…" value="${esc(xferForm.addr)}"></label>
+      <div class="small muted">Try a sample address:</div>
+      <div class="row" style="gap:6px">${SAMPLE_ADDR.map(([a,l])=>`<button type="button" class="btn sm" onclick="useSample('${a}')">${esc(l)}</button>`).join('')}</div>
+      <div class="row"><button class="btn primary right">Run checks</button></div>
+    </form>
+    <p class="small muted" style="margin-bottom:0">Simulated. Addresses are screened against sample blockchain analytics data.</p></div>
+    <div>${res}</div></div>
+  <div class="panel"><div class="row"><h3 style="margin:0">Address book</h3><button class="btn sm right" onclick="skipAddressHold()">Fast-forward 48 hours (simulation)</button></div>
+    <p class="small muted">Withdrawals only go to saved addresses. A new address waits ${wd} hours before it can be used, so a hijacked session can't add one and cash out right away.</p>
+    <form id="addrform" class="row" onsubmit="event.preventDefault();addAddress()" style="margin-bottom:10px"><input type="text" name="label" placeholder="Label, e.g. My Ledger" style="width:180px"><input type="text" name="addr" class="mono flex1" placeholder="Address"><button class="btn">Save address</button></form>
+    ${book}</div>
+  <div class="panel"><h3>Transfer history</h3>${hist}</div>`;
+}
+function seedTransfers(){
+  if(S.transfersSeeded) return;
+  const at = (m,d,h,mi) => new Date(2026, m-1, d, h, mi).getTime();
+  S.addresses.push({addr:'bc1q7mylg3r0wn4ll3t8x2k9d0e5vq3p6ytr2wz', label:'My hardware wallet', added:at(8,6,19,12), risk:0, cat:'Self-custody, no risk history'});
+  const mk = (id,kind,sym,q,addr,st,ts,px) => ({id, kind, sym, qty:q, addr, usd:q*px, ts, status:st, screen:screenAddress(addr), results:[], seeded:true});
+  const items = [
+    mk('X-101','deposit','BTC',0.01,'bc1q7mylg3r0wn4ll3t8x2k9d0e5vq3p6ytr2wz','credited',at(8,10,10,4),60900),
+    mk('X-102','withdraw','ETH',0.2,'0x4f2a9c1e88b03d7e6f5a1b2c3d4e5f60718293ab','blocked',at(9,4,21,37),2450),
+    mk('X-103','withdraw','BTC',0.004,'bc1q7mylg3r0wn4ll3t8x2k9d0e5vq3p6ytr2wz','sent',at(9,30,17,20),63100),
+    mk('X-104','deposit','ETH',0.15,'bc1qmx9t0rn4d0c5a7h3u2ll3r8z6k1p4w5s9yq','held',at(10,19,12,48),2600)
+  ];
+  S.transfers = S.transfers.concat(items).sort((a,b)=>b.ts-a.ts);
+  [['transfer','X-101 deposit 0.01 BTC from bc1q7myl…r2wz: CREDITED',items[0].ts],
+   ['settings','Address "My hardware wallet" (bc1q7myl…r2wz) added; usable after 24h hold',at(8,6,19,12)],
+   ['transfer','X-102 withdrawal 0.2 ETH to 0x4f2a9c…9 3ab: BLOCKED (address not in address book)'.replace('…9 3ab','…8293ab'),items[1].ts],
+   ['transfer','X-103 withdrawal 0.004 BTC to bc1q7myl…r2wz: SENT after step-up code',items[2].ts],
+   ['transfer','X-104 deposit 0.15 ETH from bc1qmx9t…w5s9yq: HELD (received funds from a mixing service)',items[3].ts]
+  ].forEach(([type,detail,ts]) => S.audit.push({ts, type, detail, seeded:true}));
+  S.audit.sort((a,b)=>b.ts-a.ts);
+  S.transfersSeeded = true; save();
+}
 /* ---------- boot ---------- */
 (function boot(){
   const h = (location.hash||'').slice(1); if(TABS.some(t=>t[0]===h)) tab = h;
   window.addEventListener('hashchange', () => { const h2 = location.hash.slice(1); if(TABS.some(t=>t[0]===h2) && h2!==tab){ tab = h2; render(); } });
   $('modal').addEventListener('click', e => { if(e.target.id==='modal') closeModal(); });
-  seedScamChecks(); fillNotes(); initMarket(); render(); initBridge();
+  seedScamChecks(); fillNotes(); seedTransfers(); initMarket(); render(); initBridge();
   setInterval(tickSim, 4000);
   setInterval(() => { Object.values(S.signals.vendors).forEach(v => { if(v.status !== 'down') v.updated = Date.now(); }); if(tab==='signals') document.querySelectorAll('.fresh').forEach(el => { el.textContent = ago(S.signals.vendors[el.dataset.v].updated); }); }, 3000);
 })();
