@@ -216,7 +216,8 @@ const FACTOR_NAMES = {mom:'Momentum vs BTC', liq:'Liquidity', risk:'Volatility &
 function defaultRules(){
   return [
     {id:'kill',     name:'Kill switch',            cat:'Global',   mode:'enforce', enabled:true, locked:true, desc:'Halts every order and cancels open ones.'},
-    {id:'signals',  name:'Outside risk signals',   cat:'Signals',  mode:'enforce', enabled:true, param:70, param2:40, unit:'account risk score from outside signals: block at (first), warn at (second)'},
+    {id:'signals',  name:'Outside risk signals',   cat:'Signals',  mode:'enforce', enabled:true, param:70, param2:40, desc:'Combined account risk from device and login, identity, blockchain and scam signals.', unit:'account risk score out of 100'},
+    {id:'chain', name:'Blockchain analytics', cat:'Signals', mode:'enforce', enabled:true, param:60, param2:25, desc:'Checks your linked wallets for links to sanctioned or high-risk addresses, like mixers or known scam wallets. Sanctioned exposure always blocks.', unit:'exposure score out of 100'},
     {id:'thesis',   name:'Thesis is current',      cat:'Thesis',   mode:'enforce', enabled:true, desc:'Buys need a linked thesis inside its review date with no fired risk trigger.'},
     {id:'funds',    name:'Buying power / holdings',cat:'Account',  mode:'enforce', enabled:true, desc:'Buys must fit buying power; sells must fit holdings.'},
     {id:'position', name:'Position limit',         cat:'Exposure', mode:'enforce', enabled:true, param:20,   unit:'% of total portfolio after the trade'},
@@ -315,7 +316,9 @@ S.scamChecks = S.scamChecks || [];
 if(!S.historySeeded){ S.audit = S.audit.concat(seedHistory()).sort((a,b)=>b.ts-a.ts); S.historySeeded = true; }
 if(!S.historyRedated){ redateEntries(); S.historyRedated = true; save(); }
 S.signals = S.signals || defaultSignals();
-if(!S.rules.find(r=>r.id==='signals')) S.rules.splice(1, 0, {id:'signals', name:'Outside risk signals', cat:'Signals', mode:'enforce', enabled:true, param:70, param2:40, unit:'account risk score from outside signals: block at (first), warn at (second)'});
+if(!S.rules.find(r=>r.id==='signals')) S.rules.splice(1, 0, {id:'signals', name:'Outside risk signals', cat:'Signals', mode:'enforce', enabled:true, param:70, param2:40, desc:'Combined account risk from device and login, identity, blockchain and scam signals.', unit:'account risk score out of 100'});
+S.rules.forEach(r=>{ if(r.id==='chain'){ r.desc='Checks your linked wallets for links to sanctioned or high-risk addresses, like mixers or known scam wallets. Sanctioned exposure always blocks.'; r.unit='exposure score out of 100'; } if(r.id==='signals'){ r.desc='Combined account risk from device and login, identity, blockchain and scam signals.'; r.unit='account risk score out of 100'; } });
+if(!S.rules.find(r=>r.id==='chain')){ const k = S.rules.findIndex(r=>r.id==='signals'); S.rules.splice(k+1, 0, {id:'chain', name:'Blockchain analytics', cat:'Signals', mode:'enforce', enabled:true, param:60, param2:25, desc:'Checks your linked wallets for links to sanctioned or high-risk addresses, like mixers or known scam wallets. Sanctioned exposure always blocks.', unit:'exposure score out of 100'}); }
 function load(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s = JSON.parse(raw); if(s && s.v===1) return s; } }catch(e){} return defaultState(); }
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
 function resetDemo(){ openModal(`<h3>Reset demo data?</h3><p class="muted">This clears theses, orders, cases, the audit log and rule settings in this browser.</p><div class="row"><button class="btn primary" onclick="S=defaultState();save();closeModal();initMarket();render();toast('Demo data reset')">Reset</button><button class="btn" onclick="closeModal()">Cancel</button></div>`); }
@@ -473,6 +476,10 @@ function evaluateOrder(o){
   const add = (id, outcome, detail) => { const r = rule(id); if(!r) return; if(!r.enabled){ R.push({id, name:r.name, outcome:'skip', detail:'Rule disabled', shadow:false}); return; } R.push({id, name:r.name, outcome, detail, shadow: r.mode==='shadow' && outcome!=='pass'}); };
 
   add('kill', S.kill ? 'block' : 'pass', S.kill ? 'Kill switch is on' : 'Trading enabled');
+  { const r = rule('chain'); if(r){ const v = S.signals.vendors.chain;
+      if(v && v.status==='down') add('chain', v.mode==='closed' ? 'block' : 'pass', v.mode==='closed' ? 'Blockchain analytics unavailable (fail-closed)' : 'Blockchain analytics unavailable; continued fail-open');
+      else if(S.signals.events.sanctioned) add('chain','block','Exposure to a sanctioned address. Hard stop; needs compliance review.');
+      else { const sc = vendorScore('chain'); add('chain', sc >= r.param ? 'block' : sc >= r.param2 ? 'warn' : 'pass', `Wallet exposure ${sc}/100 (warn ${r.param2}, block ${r.param})`); } } }
   { const r = rule('signals'); if(r){ const sum = signalSummary();
       const closedDown = sum.down.filter(v => S.signals.vendors[v.id].mode==='closed'), openDown = sum.down.filter(v => S.signals.vendors[v.id].mode==='open');
       if(closedDown.length) add('signals','block', `${closedDown.map(v=>v.name).join(', ')} unavailable (fail-closed)`);
@@ -690,6 +697,7 @@ function changeRule(id, field, value){
   const r = rule(id); const old = r[field];
   let looser = false;
   if(field==='param' && id!=='quiet') looser = +value > +old;
+  if(field==='param2' && (id==='signals' || id==='chain')) looser = +value > +old;
   if(field==='enabled') looser = !value;
   if(field==='mode') looser = value==='shadow';
   if(looser){
@@ -1060,7 +1068,9 @@ const SIGNAL_EVENTS = [
   {id:'recent2fa',   vendor:'device',   pts:30, label:'2FA or password changed in the last 24 hours'},
   {id:'emailChange', vendor:'device',   pts:20, label:'Email address changed in the last 24 hours'},
   {id:'kycPending',  vendor:'identity', pts:50, label:'Identity re-verification pending'},
-  {id:'riskyWallet', vendor:'chain',    pts:80, label:'A linked wallet has exposure to a high-risk address'}
+  {id:'mixer',       vendor:'chain',    pts:35, label:'A linked wallet received funds from a mixing service'},
+  {id:'riskyWallet', vendor:'chain',    pts:60, label:'A linked wallet has exposure to a high-risk address'},
+  {id:'sanctioned',  vendor:'chain',    pts:100, label:'A deposit traces back to a sanctioned address'}
 ];
 function defaultSignals(){ const now = Date.now(); return {vendors:{device:{status:'healthy',mode:'closed',updated:now}, identity:{status:'healthy',mode:'closed',updated:now}, chain:{status:'healthy',mode:'closed',updated:now}, scam:{status:'healthy',mode:'open',updated:now}}, events:{}, alerted:false}; }
 function vendorName(id){ return (VENDORS.find(v=>v.id===id)||{}).name || id; }
@@ -1134,7 +1144,7 @@ function viewSignals(){
 
 function viewRules(){
   const rows = S.rules.map(r => `<tr><td><b>${esc(r.name)}</b><div class="small muted">${esc(r.desc||r.unit||'')}</div></td><td><span class="chip mutedc">${r.cat}</span></td>
-    <td>${r.param!=null?`<input type="number" step="any" class="cell" value="${r.param}" onchange="changeRule('${r.id}','param',this.value)">${r.param2!=null?` ${r.id==='quiet'?'to':'warn at'} <input type="number" class="cell" value="${r.param2}" onchange="changeRule('${r.id}','param2',this.value)">`:''}<div class="small muted">${esc(r.unit)}</div>`:'<span class="muted small">no threshold</span>'}</td>
+    <td style="min-width:220px">${r.param!=null?`<input type="number" step="any" class="cell" value="${r.param}" onchange="changeRule('${r.id}','param',this.value)">${r.param2!=null?` ${r.id==='quiet'?'to':'warn at'} <input type="number" class="cell" value="${r.param2}" onchange="changeRule('${r.id}','param2',this.value)">`:''}<div class="small muted">${esc(r.unit)}</div>`:'<span class="muted small">no threshold</span>'}</td>
     <td>${r.locked?'<span class="chip info">always on</span>':`<div class="seg"><button class="${r.mode==='enforce'?'on':''}" onclick="changeRule('${r.id}','mode','enforce')">Enforce</button><button class="${r.mode==='shadow'?'on':''}" onclick="changeRule('${r.id}','mode','shadow')">Shadow</button></div>`}</td>
     <td>${r.locked?'':`<label class="row small"><input type="checkbox" ${r.enabled?'checked':''} onchange="changeRule('${r.id}','enabled',this.checked)"> enabled</label>`}</td>
     <td class="small">${ruleStats(r.id)}</td></tr>`).join('');
