@@ -229,6 +229,43 @@ function defaultRules(){
     {id:'quiet',    name:'Quiet hours',            cat:'Behavior', mode:'enforce', enabled:true, param:23, param2:6, unit:'local hours, start to end (Warn)'}
   ];
 }
+function seedHistory(){
+  // Earlier activity in this browser profile, Aug to Oct 2026.
+  let r = 20260804; const rnd = () => (r = (r*1103515245 + 12345) % 2147483648) / 2147483648;
+  const at = (m, d) => new Date(2026, m-1, d, 7 + Math.floor(rnd()*15), Math.floor(rnd()*60)).getTime();
+  const E = [
+    [8,4,'settings','Rule "Max order size" set to $1,000 (tightened, applied immediately)'],
+    [8,4,'thesis','Thesis created for BTC: core holding, add on pullbacks'],
+    [8,6,'key','Robinhood API key registered; private key stays on this device'],
+    [8,9,'check','O-1001 buy 0.005 BTC limit: passed (0 warn, 0 shadow)','O-1001','kill:pass signals:pass funds:pass size:pass daily:pass'],
+    [8,9,'confirm','O-1001 confirmed by user','O-1001'],
+    [8,9,'fill','O-1001 filled 0.005 BTC @ $61,240','O-1001'],
+    [8,14,'thesis','Thesis created for ETH: staking yield and L2 growth'],
+    [8,19,'check','O-1002 buy 1.2 ETH limit: BLOCKED (1 warn, 0 shadow)','O-1002','size:block spread:warn'],
+    [8,19,'case','Case opened: O-1002 blocked by Max order size','O-1002'],
+    [8,20,'case','Case resolved: sized down, rule working as intended','O-1002'],
+    [8,27,'settings','Requested loosening "Daily loss limit" to $500; held for 24-hour cooldown'],
+    [8,28,'settings','Cooldown ended; "Daily loss limit" change applied'],
+    [9,3,'signals','Login from a new device: on'],
+    [9,3,'security','Step-up code verified for order O-1003','O-1003'],
+    [9,3,'signals','Login from a new device: off (confirmed as own laptop)'],
+    [9,11,'check','O-1004 buy 4 SOL limit: passed (1 warn, 0 shadow)','O-1004','velocity:pass deviation:warn'],
+    [9,11,'order','O-1004 cancelled before sending','O-1004'],
+    [9,18,'reconcile','Reconciliation run: 0 mismatches'],
+    [9,24,'kill','Kill switch ON during market swing'],
+    [9,24,'kill','Kill switch off'],
+    [10,2,'research','Research style changed to Lower volatility'],
+    [10,8,'check','O-1005 buy 0.003 BTC limit: passed (0 warn, 0 shadow)','O-1005','kill:pass signals:pass size:pass'],
+    [10,8,'fill','O-1005 filled 0.003 BTC @ $63,910','O-1005'],
+    [10,15,'anomaly','Order velocity limit hit on BTC'],
+    [10,15,'case','Case opened: velocity anomaly on BTC'],
+    [10,16,'case','Case resolved: duplicate clicks, no order sent'],
+    [10,22,'settings','Rule "Outside risk signals" moved from shadow to enforce'],
+    [10,29,'reconcile','Reconciliation run: 0 mismatches'],
+  ];
+  return E.map(([m,d,type,detail,orderId,rules]) => ({ts:at(m,d), type, detail, ...(orderId?{orderId}:{}), ...(rules?{rules}:{}), seeded:true}))
+          .sort((a,b)=>b.ts-a.ts);
+}
 function defaultState(){
   const now = Date.now();
   return {
@@ -240,7 +277,7 @@ function defaultState(){
     ],
     cash:10000, holdings:{BTC:0.02, ETH:0.5},
     broker:{orders:{}, holdings:{BTC:0.02, ETH:0.5}},
-    orders:[], cases:[], audit:[], anomalies:[], pending:[],
+    orders:[], cases:[], audit:seedHistory(), historySeeded:true, anomalies:[], pending:[],
     rules:defaultRules(), kill:false, settingsChangedAt:0, forceSim:false,
     keys:[
       {id:'K1', label:'research-readonly', scopes:['Account read','Holdings read','Market data'], created:now-30*DAY, prefix:'rh-api-••••' + rnd4(), status:'active'},
@@ -254,6 +291,7 @@ function rnd4(){return Math.random().toString(16).slice(2,6)}
 /* ---------- state ---------- */
 let S = load();
 S.scamChecks = S.scamChecks || [];
+if(!S.historySeeded){ S.audit = S.audit.concat(seedHistory()).sort((a,b)=>b.ts-a.ts); S.historySeeded = true; }
 S.signals = S.signals || defaultSignals();
 if(!S.rules.find(r=>r.id==='signals')) S.rules.splice(1, 0, {id:'signals', name:'Outside risk signals', cat:'Signals', mode:'enforce', enabled:true, param:70, param2:40, unit:'account risk score from outside signals: block at (first), warn at (second)'});
 function load(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s = JSON.parse(raw); if(s && s.v===1) return s; } }catch(e){} return defaultState(); }
@@ -328,7 +366,7 @@ function usd(n, d){ if(n==null||isNaN(n)) return '–'; const digits = d!=null?d
 function px(n){ return usd(n, n<1?4:(n<100?2:0)); }
 function qty(n){ return Number(n).toLocaleString('en-US',{maximumFractionDigits:8}); }
 function pct(n, d=1){ return (n>0?'+':'') + Number(n).toFixed(d) + '%'; }
-function when(ts){ const d = new Date(ts); return d.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
+function when(ts){ const d = new Date(ts); return d.toLocaleDateString('en-US',{month:'short',day:'numeric',year: d.getFullYear()!==new Date().getFullYear()?'numeric':undefined}) + ' ' + d.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}); }
 function uuid(){ return (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random()*16|0; return (c==='x'?r:(r&3|8)).toString(16); })); }
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('on'); clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('on'), 2600); }
 function openModal(html){ $('modal-body').innerHTML = html; $('modal').classList.add('on'); }
