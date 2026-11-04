@@ -115,7 +115,9 @@ input.cell{width:76px;padding:4px 7px;font-size:12.5px}
 .banner.info{background:var(--accentSoft);color:#0B3F35;border-left-color:var(--accent)}
 .banner.bad{background:var(--badSoft);color:#7A1A12;border-left-color:var(--bad)}
 .rules td{padding:8px 10px}
-td.why{font-size:12.5px;min-width:240px}
+td.why{font-size:12.5px;min-width:220px}
+@media(max-width:1560px){table.rank-tbl th:nth-child(8),table.rank-tbl td:nth-child(8),table.rank-tbl th:nth-child(9),table.rank-tbl td:nth-child(9){display:none}table.rank-tbl th,table.rank-tbl td{padding-left:6px;padding-right:6px}table.rank-tbl td.why{min-width:190px}}
+@media(max-width:1180px){table.rank-tbl th:nth-child(10),table.rank-tbl td:nth-child(10){display:none}}
 .why .plus{color:var(--good)}.why .minus{color:var(--warn)}
 .card{border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px;background:#fff}
 .card h4{margin:0 0 4px;font-size:14.5px;font-weight:650}
@@ -729,7 +731,7 @@ function viewResearch(){
   <div class="row" style="margin-bottom:14px"><div class="seg">${Object.entries(STYLES).map(([k,s])=>`<button class="${S.style===k?'on':''}" onclick="setStyle('${k}')">${s.label}</button>`).join('')}</div>
   <span class="muted small">Weights: ${Object.entries(style.w).map(([k,w])=>FACTOR_NAMES[k]+' '+Math.round(w*100)+'%').join(', ')}</span>
   <button class="btn sm right" onclick="toggleEdit()">${editing?'Done editing':'Edit inputs'}</button></div>
-  <div class="panel" style="overflow-x:auto"><table><tr><th></th><th class="num">Rank</th><th>Asset</th><th class="num">Price</th><th>Fit score</th><th class="num">${editing?'30d return %':'30d vs BTC'}</th><th class="num">Volatility</th><th class="num">90d drawdown</th><th class="num">24h volume</th><th>Unlock risk</th><th>Security</th><th>Why it ranks here</th><th>Compare</th></tr>${rows}</table></div>
+  <div class="panel" style="overflow-x:auto"><table class="${editing?'':'rank-tbl'}"><tr><th></th><th class="num">Rank</th><th>Asset</th><th class="num">Price</th><th>Fit score</th><th class="num">${editing?'30d return %':'30d vs BTC'}</th><th class="num">Volatility</th><th class="num">90d drawdown</th><th class="num">24h volume</th><th>Unlock risk</th><th>Security</th><th>Why it ranks here</th><th>Compare</th></tr>${rows}</table></div>
   ${cmp}`;
 }
 function setStyle(k){ S.style=k; logAudit('research', `Research style set to ${STYLES[k].label}`); save(); render(); }
