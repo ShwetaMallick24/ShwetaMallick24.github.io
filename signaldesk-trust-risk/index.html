@@ -266,6 +266,27 @@ function seedHistory(){
   return E.map(([m,d,type,detail,orderId,rules]) => ({ts:at(m,d), type, detail, ...(orderId?{orderId}:{}), ...(rules?{rules}:{}), seeded:true}))
           .sort((a,b)=>b.ts-a.ts);
 }
+function redateEntries(){
+  // Spread entries that all landed on one day across Aug to early Nov 2026, keeping each order's steps together.
+  const mine = S.audit.filter(a=>!a.seeded).sort((a,b)=>a.ts-b.ts);
+  if(!mine.length) return;
+  const groups = []; let g = null;
+  for(const a of mine){
+    const same = g && ((a.orderId && a.orderId===g.orderId) || (!a.orderId && a.ts - g.last < 60000));
+    if(!same){ g = {items:[], orderId:a.orderId, first:a.ts, last:a.ts}; groups.push(g); }
+    g.items.push(a); g.last = a.ts; if(a.orderId) g.orderId = a.orderId;
+  }
+  let r = 7351; const rnd = () => (r = (r*1103515245 + 12345) % 2147483648) / 2147483648;
+  const start = new Date(2026,7,5).getTime(), end = new Date(2026,10,3).getTime();
+  const days = groups.map(()=> start + rnd()*(end-start)).sort((a,b)=>a-b);
+  const tsMap = new Map();
+  groups.forEach((grp,i)=>{
+    const d = new Date(days[i]); d.setHours(8 + Math.floor(rnd()*13), Math.floor(rnd()*60), 0, 0);
+    grp.items.forEach(a=>{ const nt = d.getTime() + (a.ts - grp.first); tsMap.set(a.ts, nt); a.ts = nt; });
+  });
+  (S.orders||[]).forEach(o=>{ const e = (S.audit.find(a=>a.orderId===o.id && !a.seeded)); if(e) o.ts = e.ts; });
+  S.audit.sort((a,b)=>b.ts-a.ts);
+}
 function defaultState(){
   const now = Date.now();
   return {
@@ -292,6 +313,7 @@ function rnd4(){return Math.random().toString(16).slice(2,6)}
 let S = load();
 S.scamChecks = S.scamChecks || [];
 if(!S.historySeeded){ S.audit = S.audit.concat(seedHistory()).sort((a,b)=>b.ts-a.ts); S.historySeeded = true; }
+if(!S.historyRedated){ redateEntries(); S.historyRedated = true; save(); }
 S.signals = S.signals || defaultSignals();
 if(!S.rules.find(r=>r.id==='signals')) S.rules.splice(1, 0, {id:'signals', name:'Outside risk signals', cat:'Signals', mode:'enforce', enabled:true, param:70, param2:40, unit:'account risk score from outside signals: block at (first), warn at (second)'});
 function load(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s = JSON.parse(raw); if(s && s.v===1) return s; } }catch(e){} return defaultState(); }
