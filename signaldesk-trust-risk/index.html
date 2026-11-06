@@ -229,6 +229,7 @@ function defaultRules(){
     {id:'velocity', name:'Velocity / duplicate',   cat:'Trading',  mode:'enforce', enabled:true, param:3,    unit:'orders per symbol in 10 min (more is blocked)'},
     {id:'deviation',name:'Price deviation',        cat:'Trading',  mode:'enforce', enabled:true, param:2,    unit:'% limit price away from live quote (Warn)'},
     {id:'spread',   name:'Spread guard',           cat:'Trading',  mode:'enforce', enabled:true, param:1,    unit:'% bid/ask spread; market orders blocked above'},
+    {id:'datatrust', name:'Data trust', cat:'Research', mode:'enforce', enabled:true, desc:'Checks the Data sources result for the asset. Warns when trusted sources disagree and the conflict is unresolved, when the best price source is stale, or when the trading price is outside your tolerance of the trusted price. Blocks when no source has a trusted price.', unit:'uses the cut points on Data sources'},
     {id:'fit',      name:'Research fit',           cat:'Research', mode:'shadow',  enabled:true, param:4,    unit:'worst rank allowed for buys under current style (Warn)'},
     {id:'quiet',    name:'Quiet hours',            cat:'Behavior', mode:'enforce', enabled:true, param:23, param2:6, unit:'local hours, start to end (Warn)'}
   ];
@@ -324,6 +325,7 @@ S.rules.forEach(r=>{ if(r.id==='chain'){ r.desc='Screens wallets whenever crypto
 ['wd_addr','wd_security','wd_cap'].forEach(id => { const ex = S.rules.find(r=>r.id===id); if(ex && !ex.desc) ex.desc = defaultRules().find(r=>r.id===id).desc; if(!S.rules.find(r=>r.id===id)){ const d = defaultRules().find(r=>r.id===id); const k = S.rules.findIndex(r=>r.id==='thesis'); S.rules.splice(k<0?S.rules.length:k, 0, d); } });
 S.addresses = S.addresses || []; S.transfers = S.transfers || []; S.seq.transfer = S.seq.transfer || 1;
 if(!S.rules.find(r=>r.id==='chain')){ const k = S.rules.findIndex(r=>r.id==='signals'); S.rules.splice(k+1, 0, {id:'chain', name:'Blockchain analytics', cat:'Signals', mode:'enforce', enabled:true, param:60, param2:25, desc:'Screens wallets whenever crypto moves in or out: deposits from outside wallets and withdrawals to new addresses, plus wallets linked to your account. Sanctioned exposure always blocks.', unit:'exposure score out of 100'}); }
+if(!S.rules.find(r=>r.id==='datatrust')){ const k = S.rules.findIndex(r=>r.id==='fit'); S.rules.splice(k<0?S.rules.length:k, 0, {id:'datatrust', name:'Data trust', cat:'Research', mode:'enforce', enabled:true, desc:'Checks the Data sources result for the asset. Warns when trusted sources disagree and the conflict is unresolved, when the best price source is stale, or when the trading price is outside your tolerance of the trusted price. Blocks when no source has a trusted price.', unit:'uses the cut points on Data sources'}); }
 function load(){ try{ const raw = localStorage.getItem(LS_KEY); if(raw){ const s = JSON.parse(raw); if(s && s.v===1) return s; } }catch(e){} return defaultState(); }
 function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(S)); }catch(e){} }
 function resetDemo(){ openModal(`<h3>Reset demo data?</h3><p class="muted">This clears theses, orders, cases, the audit log and rule settings in this browser.</p><div class="row"><button class="btn primary" onclick="S=defaultState();save();closeModal();initMarket();render();toast('Demo data reset')">Reset</button><button class="btn" onclick="closeModal()">Cancel</button></div>`); }
@@ -517,6 +519,8 @@ function evaluateOrder(o){
   else add('deviation','pass','Market order: checked by spread guard');
 
   { const r = rule('spread'); add('spread', o.type==='market' && q.spread > r.param ? 'block':'pass', `Spread ${q.spread.toFixed(2)}% (guard ${r.param}%${o.type==='market'?'':'; limit order'})`); }
+
+  { const d = dataTrustFor(o.sym, q.mid); add('datatrust', d.outcome, d.detail); }
 
   if(o.side==='buy'){ const r = rule('fit'); add('fit', rank <= r.param ? 'pass':'warn', `${o.sym} ranks #${rank} of ${S.assets.length} under ${STYLES[S.style].label} (cutoff #${r.param})`); }
   else add('fit','pass','Not applied to sells');
@@ -1220,12 +1224,26 @@ function dataResults(recs){
   });
 }
 
+function dataTrustFor(sym, tradePrice){
+  if(!DATA_ASSETS.includes(sym)) return {outcome:'pass', detail:`${sym} is not covered by Data sources yet`};
+  const c = dataCfg(); const {recs, conflicts} = runDataChecks(); const card = dataResults(recs).find(a => a.sym===sym);
+  if(!card.price) return {outcome:'block', detail:`No trusted ${sym} price: every price feed is stale, missing or overruled`};
+  const issues = [];
+  const open = conflicts.filter(x => x.sym===sym && !x.auto).filter(x => { const id = (c.caseFor||{})[x.key]; const cs = id && S.cases.find(k => k.id===id); return !(cs && cs.status==='resolved'); });
+  if(open.length) issues.push('trusted sources disagree and the conflict is not resolved yet' + (open.some(x => (c.caseFor||{})[x.key]) ? ' (case open in review queue)' : ''));
+  const best = DATA_SOURCES.filter(s => s.kind==='Market price').sort((a,b) => b.reliability - a.reliability)[0];
+  if(card.price.src !== best.id) issues.push(`${best.name} is stale, so the price comes from the ${srcOf(card.price.src).name}`);
+  const gap = tradePrice ? Math.abs(tradePrice - card.price.value) / card.price.value * 100 : 0;
+  if(gap > c.tol) issues.push(`trading price is ${gap.toFixed(1)}% from the trusted price ${px(card.price.value)} (tolerance ${c.tol}%)`);
+  const resolved = conflicts.filter(x => x.sym===sym && !x.auto).length - open.length;
+  return issues.length ? {outcome:'warn', detail: `${sym}: ` + issues.join('; ')} : {outcome:'pass', detail:`${sym}: ${card.label[0]}, trusted price ${px(card.price.value)} from ${srcOf(card.price.src).name}${resolved ? '; source conflict resolved in review' : ''}`};
+}
 function setDataCfg(k, v){ const c = dataCfg(); c[k] = (k==='staleExch'||k==='badEth') ? !!v : +v; c.runAt = Date.now(); logAudit('data', `Data intake setting: ${({minRel:'minimum source reliability', tol:'price tolerance %', staleExch:'exchange feed stale', badEth:'aggregator bad ETH price'})[k]} → ${v}`); save(); render(); }
 function rerunIntake(){ const c = dataCfg(); c.runAt = Date.now(); const {recs, conflicts} = runDataChecks(); const n = s => recs.filter(r=>r.status===s).length;
   logAudit('data', `Intake run: ${recs.length} records in, ${n('clean')+n('fixed')} counted, ${n('fixed')} standardized, ${n('duplicate')} duplicate, ${n('stale')} stale, ${n('missing')} missing fields, ${n('low')} below bar, ${conflicts.length} conflicts`); save(); render(); toast('Intake re-run'); }
 function sendConflicts(){
   const c = dataCfg(); const {conflicts} = runDataChecks(); let k = 0;
-  conflicts.filter(x => !x.auto && !c.sent.includes(x.key)).forEach(x => { openCase('Source conflict', x.text + ' Decide which source to trust, or wait for confirmation.', {}); c.sent.push(x.key); k++; });
+  conflicts.filter(x => !x.auto && !c.sent.includes(x.key)).forEach(x => { openCase('Source conflict', x.text + ' Decide which source to trust, or wait for confirmation.', {}); c.sent.push(x.key); c.caseFor = c.caseFor || {}; c.caseFor[x.key] = S.cases[0].id; k++; });
   save(); render(); toast(k ? `${k} conflict${k>1?'s':''} sent to the review queue` : 'Nothing new to send');
 }
 
@@ -1252,6 +1270,7 @@ function viewData(){
   const openStory = conflicts.filter(x => !x.auto && !c.sent.includes(x.key)).length;
   const card = a => `<div class="card"><div class="row"><h4>${a.sym==='ALL' ? 'Market-wide' : esc(a.sym)}</h4><span class="chip ${a.label[1]}">${a.label[0]}</span></div>
       ${a.price ? `<div class="small" style="margin:6px 0">Trusted price <b>${px(a.price.value)}</b> <span class="muted">from ${esc(srcOf(a.price.src).name)}, ${fmtAge(a.price.ageMin)} ago</span></div>` : (a.sym==='ALL' ? '<div class="small muted" style="margin:6px 0">Economy and policy signals that touch every asset.</div>' : '<div class="small" style="margin:6px 0"><span class="chip warn">no trusted price</span></div>')}
+      ${a.sym!=='ALL' ? (()=>{ const d = dataTrustFor(a.sym, M[a.sym] && M[a.sym].mid); return `<div class="small" style="margin-bottom:4px">Orders: <span class="chip ${d.outcome==='block'?'block':d.outcome==='warn'?'warn':'pass'}">${d.outcome==='block'?'blocked':d.outcome==='warn'?'need extra confirmation':'allowed'}</span></div>`; })() : ''}
       <div class="small">${a.up} positive, ${a.dn} negative, ${a.flat} neutral from <b>${a.srcCount}</b> trusted source${a.srcCount===1?'':'s'}. ${a.held} record${a.held===1?'':'s'} held back.</div>
       <details><summary class="small muted">What it's based on</summary><ul class="small" style="margin:6px 0 0;padding-left:18px">${a.use.map(r=>`<li>${esc(r.text)} <span class="muted">(${esc(srcOf(r.src).name)})</span></li>`).join('') || '<li class="muted">Nothing passed the checks.</li>'}</ul></details></div>`;
   return `<h2>Data sources</h2><p class="sub">Before a signal shapes research, it has to earn trust. Feeds arrive in different formats, get mapped to one standard, pass quality checks, and only then count. These feeds are simulated, to show how mapping, checks and source trust work together.</p>
@@ -1280,7 +1299,8 @@ function viewData(){
 
   <div class="panel"><h3>3. Result</h3>
     <div class="grid2">${res.map(card).join('')}</div>
-    <p class="small muted" style="margin-bottom:0">Each summary weighs only records that passed, by source reliability and freshness. It describes what trusted sources report right now. It is not a price forecast.</p></div>`;
+    <p class="small muted" style="margin-bottom:0">Each summary weighs only records that passed, by source reliability and freshness. It describes what trusted sources report right now. It is not a price forecast.</p>
+    <p class="small muted" style="margin-bottom:0">Orders use this through the <a href="#rules">Data trust</a> rule: unresolved disagreements, a stale best source, or a trading price outside your tolerance need an extra confirmation. No trusted price blocks the order.</p></div>`;
 }
 
 /* ---------- risk signals (simulated third-party vendors) ---------- */
