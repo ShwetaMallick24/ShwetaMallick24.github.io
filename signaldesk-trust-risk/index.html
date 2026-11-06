@@ -729,11 +729,12 @@ function revokeKey(id){ const k = S.keys.find(x=>x.id===id); k.status='revoked';
 
 /* ---------- views ---------- */
 let tab = 'research', prefill = null;
-const TABS = [['research','Research'],['theses','Theses'],['trade','Trade'],['transfers','Transfers'],['scam','Scam check'],['signals','Risk signals'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
+const TABS = [['research','Research'],['data','Data sources'],['theses','Theses'],['trade','Trade'],['transfers','Transfers'],['scam','Scam check'],['signals','Risk signals'],['queue','Review queue'],['audit','Audit log'],['account','Account & keys'],['rules','Risk rules']];
 function setTab(t){ tab = t; try{ history.replaceState(null,'','#'+t); }catch(e){} render(); }
-const NAV_GROUPS = [['Research',['research','theses']],['Trading',['trade','transfers','queue','audit']],['Protection',['scam','signals','account','rules']]];
+const NAV_GROUPS = [['Research',['research','data','theses']],['Trading',['trade','transfers','queue','audit']],['Protection',['scam','signals','account','rules']]];
 const ICONS = {
   research:'<path d="M2.5 13.5h11M3.5 10.5l3-3 2.5 2 4-4.5"/>',
+  data:'<ellipse cx="8" cy="4" rx="5" ry="1.8"/><path d="M3 4v8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8V4M3 8c0 1 2.2 1.8 5 1.8s5-.8 5-1.8"/>',
   theses:'<path d="M4 2.5h5.5l2.5 2.5v8.5H4z"/><path d="M6 7.5h4M6 10h4"/>',
   trade:'<path d="M3 5.5h9.5L10 3M13 10.5H3.5L6 13"/>',
   transfers:'<path d="M8 2.5v8M5 7.5l3 3 3-3"/><path d="M3 13.5h10"/>',
@@ -763,7 +764,7 @@ function render(){
   applyPending(false);
   renderTabs(); updateHeader();
   const v = $('view');
-  v.innerHTML = ({research:viewResearch, theses:viewTheses, trade:viewTrade, transfers:viewTransfers, queue:viewQueue, audit:viewAudit, account:viewAccount, rules:viewRules, scam:viewScam, signals:viewSignals})[tab]();
+  v.innerHTML = ({research:viewResearch, theses:viewTheses, trade:viewTrade, transfers:viewTransfers, queue:viewQueue, audit:viewAudit, account:viewAccount, rules:viewRules, scam:viewScam, signals:viewSignals, data:viewData})[tab]();
   if(tab==='trade') wireTicket();
 }
 function softRefresh(){
@@ -1059,6 +1060,227 @@ function viewScam(){
     <p class="small muted" style="margin-bottom:0">Runs entirely in your browser. Nothing you paste is sent anywhere.</p></div>
   <div>${result || '<div class="panel"><div class="empty">Paste a message and select <b>Check message</b> to see the red flags.</div></div>'}</div></div>
   <div class="panel"><h3>Recent checks</h3>${hist.length ? `<table><tr><th>Time</th><th>Verdict</th><th>Message</th><th>Red flags</th><th>What I did</th></tr>${hist.map(h=>`<tr><td class="small" style="white-space:nowrap">${when(h.ts)}</td><td><span class="chip ${h.cls}" style="white-space:nowrap">${esc(h.verdict)}</span></td><td class="small">${h.sender?`<div class="muted">${esc(h.sender)}</div>`:''}${esc(h.excerpt)}</td><td class="small">${esc(h.flags.join(', ')||'none')}</td><td class="small" style="min-width:220px"><textarea rows="3" style="width:100%;font-size:12.5px;resize:vertical" placeholder="Add a note" onchange="setScamNote(${h.ts}, this.value)">${esc(h.note||'')}</textarea></td></tr>`).join('')}</table>` : '<div class="empty">No checks yet.</div>'}</div>`;
+}
+
+/* ---------- data sources: ingest, check, result (simulated feeds) ---------- */
+const DATA_SOURCES = [
+  {id:'exch',    name:'Exchange price feed',      kind:'Market price', format:'JSON (API)',      reliability:95, maxAge:5,        map:'product_id → asset, price → value, time → observed_at'},
+  {id:'agg',     name:'Price aggregator',         kind:'Market price', format:'CSV export',      reliability:80, maxAge:15,       map:'ticker → asset, last → value, updated → observed_at'},
+  {id:'news',    name:'Crypto news wire',         kind:'Sector news',  format:'RSS',             reliability:75, maxAge:24*60,    map:'tags → asset, title → text, tone → direction, pubDate → observed_at'},
+  {id:'project', name:'Project announcements',    kind:'Company',      format:'RSS',             reliability:65, maxAge:14*24*60, map:'project → asset, title → text, impact → direction, published → observed_at'},
+  {id:'macro',   name:'Economic calendar',        kind:'Economy',      format:'CSV',             reliability:90, maxAge:7*24*60,  map:'event → text, actual vs expected → direction, date → observed_at (market-wide)'},
+  {id:'policy',  name:'Regulator press releases', kind:'Policy',       format:'HTML page',       reliability:92, maxAge:30*24*60, map:'headline → text, stance → direction, date → observed_at (market-wide)'},
+  {id:'social',  name:'Social posts',             kind:'Sentiment',    format:'JSON (scraped)',  reliability:35, maxAge:6*60,     map:'coin → asset, txt → text, mood → direction, ts (epoch seconds) → observed_at'}
+];
+const DATA_ASSETS = ['BTC','ETH','SOL'];
+const ASSET_ALIASES = {BTC:['btc','bitcoin','xbt','btc-usd','btcusd','$btc'], ETH:['eth','ether','ethereum','eth-usd','ethusd','$eth'], SOL:['sol','solana','sol-usd','solusd','$sol']};
+function dataCfg(){ S.dataCfg = S.dataCfg || {minRel:50, tol:1, staleExch:false, badEth:false, runAt:Date.now(), sent:[]}; return S.dataCfg; }
+function srcOf(id){ return DATA_SOURCES.find(s=>s.id===id); }
+
+// Raw records exactly as each source sends them: different shapes, names, and date formats.
+function rawFeeds(){
+  const c = dataCfg(), t0 = c.runAt, min = 6e4, hr = 36e5;
+  const base = s => (M[s] && M[s].mid) || (S.assets.find(a=>a.sym===s)||{}).price || 0;
+  const r2 = n => Math.round(n*100)/100;
+  const usDate = ts => { const d = new Date(ts); const p = n => String(n).padStart(2,'0'); return `${p(d.getMonth()+1)}/${p(d.getDate())}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const dayDate = ts => new Date(ts).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+  const localDT = ts => { const d = new Date(ts); const p = n => String(n).padStart(2,'0'); return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+  const exAge = c.staleExch ? 40*min : 1*min;
+  return {
+    exch: [
+      {product_id:'BTC-USD', price:String(r2(base('BTC'))),   open_24h:String(r2(base('BTC')*0.985)), time:new Date(t0-exAge).toISOString()},
+      {product_id:'ETH-USD', price:String(r2(base('ETH'))),   open_24h:String(r2(base('ETH')*1.004)), time:new Date(t0-exAge).toISOString()},
+      {product_id:'SOL-USD', price:String(r2(base('SOL'))),   open_24h:String(r2(base('SOL')*1.031)), time:new Date(t0-exAge).toISOString()}
+    ],
+    agg: [
+      {ticker:'Bitcoin', last:r2(base('BTC')*1.001), updated:usDate(t0-2*hr)},
+      {ticker:'XBT',     last:r2(base('BTC')*1.0004), updated:usDate(t0-4*min)},
+      {ticker:'ethereum',last:r2(base('ETH')*(c.badEth?1.035:1.002)), updated:usDate(t0-3*min)},
+      {ticker:'SOL',     last:r2(base('SOL')*1.018), updated:usDate(t0-6*min)}
+    ],
+    news: [
+      {title:'Spot ether funds see a third week of inflows', tags:['Ethereum'], tone:'positive', pubDate:new Date(t0-3*hr).toUTCString()},
+      {title:'Major exchange pauses SOL withdrawals after network outage', tags:['Solana'], tone:'negative', pubDate:new Date(t0-2*hr).toUTCString()},
+      {title:'Major exchange pauses SOL withdrawals after network outage.', tags:['solana'], tone:'negative', pubDate:new Date(t0-110*min).toUTCString()},
+      {title:'Bitcoin miners sell more coins as fees fall', tags:['BTC'], tone:'negative', pubDate:new Date(t0-30*hr).toUTCString()},
+      {title:'Crypto market steady ahead of jobs report', tags:[], tone:'neutral', pubDate:new Date(t0-5*hr).toUTCString()},
+      {title:'Large holders move bitcoin off exchanges', tags:['Bitcoin'], tone:'positive', pubDate:new Date(t0-6*hr).toUTCString()}
+    ],
+    project: [
+      {project:'Solana', title:'SOL withdrawals resumed on all major venues', impact:'up', published:localDT(t0-50*min)},
+      {project:'Ethereum', title:'Client release fixes validator bug', impact:'flat', published:new Date(t0-2*24*hr).toISOString().slice(0,10)}
+    ],
+    macro: [
+      {event:'CPI, year over year', date:dayDate(t0-1*24*hr), actual:3.4, expected:3.1},
+      {event:'Central bank rate decision', date:dayDate(t0-3*24*hr), actual:'hold', expected:'hold'}
+    ],
+    policy: [
+      {headline:'Regulator opens comment period on stablecoin reserve rules', stance:'neutral', date:new Date(t0-4*24*hr).toISOString().slice(0,10)},
+      {headline:'Senate committee schedules vote on market structure bill', stance:'positive', date:new Date(t0-2*24*hr).toISOString().slice(0,10)}
+    ],
+    social: [
+      {handle:'@sol_maxi_99', coin:'$SOL', txt:'SOL withdrawals are fine, this is FUD', mood:'bull', ts:Math.round((t0-20*min)/1000)},
+      {handle:'@moonboy', coin:'$BTC', txt:'BTC to 200k by Friday, guaranteed', mood:'bull', ts:Math.round((t0-45*min)/1000)},
+      {handle:'@anon_trader', coin:'$ETH', txt:'ETH looking heavy here', mood:'bear'}
+    ]
+  };
+}
+
+function parseWhen(v){
+  if(v==null || v==='') return {ts:null};
+  if(typeof v === 'number') return v < 1e12 ? {ts:v*1000, fix:'epoch seconds → timestamp'} : {ts:v};
+  const us = /^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/.exec(v);
+  if(us) return {ts:new Date(+us[3], +us[1]-1, +us[2], +us[4], +us[5]).getTime(), fix:'US date format → standard'};
+  if(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v)) return {ts:new Date(v.replace(' ','T')).getTime(), fix:'local date-time → standard'};
+  const dm = /^(\d{1,2}) ([A-Za-z]{3}) (\d{4})$/.exec(v);
+  if(dm){ const mo = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf(dm[2].toLowerCase()); if(mo>=0) return {ts:new Date(+dm[3], mo, +dm[1], 12).getTime(), fix:'day-month-year → standard, assumed midday'}; }
+  if(/^\d{4}-\d{2}-\d{2}$/.test(v)) return {ts:new Date(v+'T12:00:00').getTime(), fix:'date only → assumed midday'};
+  const p = Date.parse(v); return isNaN(p) ? {ts:null} : {ts:p, fix:/T.*Z$/.test(v)?null:'text date → standard'};
+}
+function normAsset(v){
+  if(v==null) return {asset:null};
+  const raw = Array.isArray(v) ? v[0] : v; if(raw==null || raw==='') return {asset:null};
+  const k = String(raw).trim().toLowerCase();
+  for(const [sym, al] of Object.entries(ASSET_ALIASES)) if(al.includes(k)) return {asset:sym, fix: String(raw)===sym ? null : `"${raw}" → ${sym}`};
+  return {asset:null, unknown:raw};
+}
+const DIR_MAP = {positive:1, negative:-1, neutral:0, up:1, down:-1, flat:0, bull:1, bear:-1};
+
+// Step 1: map every source into one standard shape.
+function standardize(){
+  const raw = rawFeeds(), out = [];
+  const push = (src, i, rec, asset, kind, text, value, dir, when) => {
+    const a = asset==='ALL' ? {asset:'ALL'} : normAsset(asset); const w = parseWhen(when);
+    const fixes = [a.fix, w.fix].filter(Boolean); const missing = [];
+    if(!a.asset) missing.push(a.unknown ? `unknown asset "${a.unknown}"` : 'asset'); if(w.ts==null) missing.push('time');
+    out.push({key:`${src}-${i}`, src, raw:rec, asset:a.asset, kind, text, value, dir, ts:w.ts, fixes, missing});
+  };
+  raw.exch.forEach((r,i) => { const v = +r.price, o = +r.open_24h, chg = (v-o)/o*100; push('exch', i, r, r.product_id, 'price', `${r.product_id} ${px(v)} (${pct(chg)} 24h)`, v, Math.abs(chg) >= 1 ? Math.sign(chg) : 0, r.time); });
+  raw.agg.forEach((r,i)  => push('agg', i, r, r.ticker, 'price', `${r.ticker} ${px(r.last)}`, r.last, null, r.updated));
+  raw.news.forEach((r,i) => push('news', i, r, r.tags, 'event', r.title, null, DIR_MAP[r.tone], r.pubDate));
+  raw.project.forEach((r,i) => push('project', i, r, r.project, 'event', r.title, null, DIR_MAP[r.impact], r.published));
+  raw.macro.forEach((r,i) => push('macro', i, r, 'ALL', 'event', `${r.event}: ${r.actual} vs ${r.expected} expected`, null, typeof r.actual==='number' ? (r.actual > r.expected ? -1 : r.actual < r.expected ? 1 : 0) : 0, r.date));
+  raw.policy.forEach((r,i) => push('policy', i, r, 'ALL', 'event', r.headline, null, DIR_MAP[r.stance], r.date));
+  raw.social.forEach((r,i) => push('social', i, r, r.coin, 'event', `${r.handle}: ${r.txt}`, null, DIR_MAP[r.mood], r.ts));
+  return out;
+}
+
+// Step 2: run the checks. Each record ends with one status and a plain reason.
+function runDataChecks(){
+  const c = dataCfg(), now = c.runAt, recs = standardize(), seen = {}, conflicts = [];
+  const normText = s => s.toLowerCase().replace(/[^a-z0-9 ]/g,'').trim();
+  recs.forEach(r => {
+    const s = srcOf(r.src); r.rel = s.reliability; r.ageMin = r.ts==null ? null : Math.max(0, (now - r.ts)/6e4);
+    if(r.missing.length){ r.status = 'missing'; r.why = `Missing ${r.missing.join(' and ')}. Held back, not guessed.`; return; }
+    const dk = r.kind==='event' ? normText(r.text) : null;
+    if(dk && seen[dk]){ r.status = 'duplicate'; r.why = `Same story as ${srcOf(seen[dk].src).name}, already counted once.`; return; }
+    if(dk) seen[dk] = r;
+    if(r.ageMin > s.maxAge){ r.status = 'stale'; r.why = `${fmtAge(r.ageMin)} old. This source is only trusted for ${fmtAge(s.maxAge)}.`; return; }
+    if(s.reliability < c.minRel){ r.status = 'low'; r.why = `Source reliability ${s.reliability} is below your bar of ${c.minRel}. Kept for context, not counted.`; return; }
+    r.status = r.fixes.length ? 'fixed' : 'clean'; r.why = r.fixes.length ? 'Standardized: ' + r.fixes.join('; ') : 'Passed all checks.';
+  });
+  const usable = recs.filter(r => r.status==='clean' || r.status==='fixed');
+  DATA_ASSETS.forEach(sym => {
+    // Price conflicts: clear-cut, so the more reliable fresh source wins automatically.
+    const prices = usable.filter(r => r.asset===sym && r.kind==='price').sort((a,b) => b.rel - a.rel);
+    if(prices.length > 1){
+      const best = prices[0];
+      prices.slice(1).forEach(p => { const gap = Math.abs(p.value - best.value) / best.value * 100;
+        if(gap > c.tol){ p.status = 'overruled'; p.why = `Price is ${gap.toFixed(1)}% away from ${srcOf(best.src).name} (tolerance ${c.tol}%). The more reliable source wins.`;
+          conflicts.push({key:`price-${sym}-${p.src}`, sym, type:'price', auto:true, text:`${sym} price: ${srcOf(p.src).name} ${px(p.value)} vs ${srcOf(best.src).name} ${px(best.value)} (${gap.toFixed(1)}% apart). Auto-resolved to ${srcOf(best.src).name}.`}); } });
+    }
+    // Story conflicts: trusted sources pointing opposite ways are a gray area, so a person decides.
+    const ev = usable.filter(r => r.asset===sym && r.kind==='event' && r.dir);
+    const up = ev.filter(r => r.dir > 0), dn = ev.filter(r => r.dir < 0);
+    if(up.length && dn.length){
+      [...up, ...dn].forEach(r => { r.status = 'conflict'; r.why = 'Trusted sources disagree on this asset. Sent for review instead of picking a side.'; });
+      conflicts.push({key:`story-${sym}-${up.map(r=>r.key).concat(dn.map(r=>r.key)).join('.')}`, sym, type:'story', auto:false, text:`${sym}: "${up[0].text}" (${srcOf(up[0].src).name}) vs "${dn[0].text}" (${srcOf(dn[0].src).name}).`});
+    }
+  });
+  return {recs, conflicts};
+}
+function fmtAge(m){ return m < 60 ? `${Math.round(m)} min` : m < 48*60 ? `${Math.round(m/60)} h` : `${Math.round(m/1440)} days`; }
+
+// Step 3: one summary per asset, built only from records that passed.
+function dataResults(recs){
+  const c = dataCfg();
+  const counted = r => r.status==='clean' || r.status==='fixed';
+  const fresh = r => { const s = srcOf(r.src); return Math.max(0.5, 1 - (r.ageMin / s.maxAge) * 0.5); };
+  return DATA_ASSETS.concat(['ALL']).map(sym => {
+    const rows = recs.filter(r => r.asset===sym);
+    const use = rows.filter(counted);
+    const price = use.filter(r => r.kind==='price').sort((a,b) => b.rel - a.rel)[0];
+    const voters = use.filter(r => r.dir != null);
+    let w = 0; voters.forEach(r => w += r.dir * (r.rel/100) * fresh(r));
+    const dn = voters.filter(r => r.dir < 0).length, up = voters.filter(r => r.dir > 0).length;
+    const inConflict = rows.some(r => r.status==='conflict');
+    const label = inConflict ? ['Sources disagree','warn'] : (w <= -0.5 && dn >= 2) ? ['Risk elevated','block'] : w <= -0.3 ? ['Leaning negative','warn'] : (w >= 0.5 && up >= 2) ? ['Supportive','pass'] : w >= 0.3 ? ['Leaning positive','pass'] : ['Quiet','mutedc'];
+    const srcCount = new Set(use.map(r=>r.src)).size;
+    return {sym, rows, use, price, up, dn, flat: voters.length - up - dn, label, srcCount, held: rows.length - use.length, w};
+  });
+}
+
+function setDataCfg(k, v){ const c = dataCfg(); c[k] = (k==='staleExch'||k==='badEth') ? !!v : +v; c.runAt = Date.now(); logAudit('data', `Data intake setting: ${({minRel:'minimum source reliability', tol:'price tolerance %', staleExch:'exchange feed stale', badEth:'aggregator bad ETH price'})[k]} → ${v}`); save(); render(); }
+function rerunIntake(){ const c = dataCfg(); c.runAt = Date.now(); const {recs, conflicts} = runDataChecks(); const n = s => recs.filter(r=>r.status===s).length;
+  logAudit('data', `Intake run: ${recs.length} records in, ${n('clean')+n('fixed')} counted, ${n('fixed')} standardized, ${n('duplicate')} duplicate, ${n('stale')} stale, ${n('missing')} missing fields, ${n('low')} below bar, ${conflicts.length} conflicts`); save(); render(); toast('Intake re-run'); }
+function sendConflicts(){
+  const c = dataCfg(); const {conflicts} = runDataChecks(); let k = 0;
+  conflicts.filter(x => !x.auto && !c.sent.includes(x.key)).forEach(x => { openCase('Source conflict', x.text + ' Decide which source to trust, or wait for confirmation.', {}); c.sent.push(x.key); k++; });
+  save(); render(); toast(k ? `${k} conflict${k>1?'s':''} sent to the review queue` : 'Nothing new to send');
+}
+
+function viewData(){
+  const c = dataCfg(); const {recs, conflicts} = runDataChecks(); const res = dataResults(recs);
+  const n = s => recs.filter(r=>r.status===s).length;
+  const counted = n('clean') + n('fixed');
+  const raw = rawFeeds();
+  const STAT = {clean:['clean','pass'], fixed:['standardized','info'], duplicate:['duplicate','mutedc'], stale:['stale','warn'], missing:['missing field','block'], low:['below bar','mutedc'], overruled:['overruled','warn'], conflict:['conflict','block']};
+  const order = {conflict:0, missing:1, overruled:2, stale:3, duplicate:4, low:5, fixed:6, clean:7};
+  const srcRows = DATA_SOURCES.map(s => { const rs = recs.filter(r=>r.src===s.id);
+    return `<tr><td><b>${esc(s.name)}</b><div class="small muted">${esc(s.kind)}</div></td><td class="small">${esc(s.format)}</td><td class="num">${rs.length}</td>
+      <td class="num"><span class="scorebar" style="width:56px"><i style="width:${s.reliability}%;background:${s.reliability>=c.minRel?'var(--accent)':'var(--shadow)'}"></i></span><b>${s.reliability}</b></td>
+      <td class="small">${fmtAge(s.maxAge)}</td>
+      <td class="small" style="min-width:240px"><span class="mono" style="font-size:11.5px">${esc(s.map)}</span>
+        <details><summary class="small muted">Raw sample</summary><pre class="code">${esc(JSON.stringify(raw[s.id][0], null, 1))}</pre></details></td></tr>`; }).join('');
+  const recRows = recs.slice().sort((a,b) => order[a.status] - order[b.status]).map(r => `<tr>
+      <td><span class="chip ${STAT[r.status][1]}">${STAT[r.status][0]}</span></td>
+      <td class="mono">${esc(r.asset || '–')}</td>
+      <td class="small">${esc(srcOf(r.src).name)}</td>
+      <td class="small">${esc(r.text)}</td>
+      <td class="small" style="white-space:nowrap">${r.ageMin==null ? '–' : fmtAge(r.ageMin) + ' ago'}</td>
+      <td class="small">${esc(r.why)}</td></tr>`).join('');
+  const openStory = conflicts.filter(x => !x.auto && !c.sent.includes(x.key)).length;
+  const card = a => `<div class="card"><div class="row"><h4>${a.sym==='ALL' ? 'Market-wide' : esc(a.sym)}</h4><span class="chip ${a.label[1]}">${a.label[0]}</span></div>
+      ${a.price ? `<div class="small" style="margin:6px 0">Trusted price <b>${px(a.price.value)}</b> <span class="muted">from ${esc(srcOf(a.price.src).name)}, ${fmtAge(a.price.ageMin)} ago</span></div>` : (a.sym==='ALL' ? '<div class="small muted" style="margin:6px 0">Economy and policy signals that touch every asset.</div>' : '<div class="small" style="margin:6px 0"><span class="chip warn">no trusted price</span></div>')}
+      <div class="small">${a.up} positive, ${a.dn} negative, ${a.flat} neutral from <b>${a.srcCount}</b> trusted source${a.srcCount===1?'':'s'}. ${a.held} record${a.held===1?'':'s'} held back.</div>
+      <details><summary class="small muted">What it's based on</summary><ul class="small" style="margin:6px 0 0;padding-left:18px">${a.use.map(r=>`<li>${esc(r.text)} <span class="muted">(${esc(srcOf(r.src).name)})</span></li>`).join('') || '<li class="muted">Nothing passed the checks.</li>'}</ul></details></div>`;
+  return `<h2>Data sources</h2><p class="sub">Before a signal shapes research, it has to earn trust. Feeds arrive in different formats, get mapped to one standard, pass quality checks, and only then count. These feeds are simulated, to show how mapping, checks and source trust work together.</p>
+  <div class="panel"><div class="row"><h3 style="margin:0">Your cut points</h3><button class="btn sm right" onclick="rerunIntake()">Re-run intake</button></div>
+    <div class="row" style="margin-top:10px">
+      <label class="f" style="flex:0 0 220px">Minimum source reliability<input type="number" min="0" max="100" class="cell" value="${c.minRel}" onchange="setDataCfg('minRel', this.value)"></label>
+      <label class="f" style="flex:0 0 240px">Price tolerance between feeds (%)<input type="number" min="0.1" step="0.1" class="cell" value="${c.tol}" onchange="setDataCfg('tol', this.value)"></label>
+      <div class="flex1"></div>
+      <div><div class="small muted" style="font-weight:600;margin-bottom:4px">Try a bad day</div>
+        <label class="check small"><input type="checkbox" ${c.staleExch?'checked':''} onchange="setDataCfg('staleExch', this.checked)"> <span>Exchange feed stops updating</span></label>
+        <label class="check small"><input type="checkbox" ${c.badEth?'checked':''} onchange="setDataCfg('badEth', this.checked)"> <span>Aggregator sends a bad ETH price</span></label></div>
+    </div>
+    <div class="small muted" style="margin-top:6px">Last run ${when(c.runAt)}.</div></div>
+
+  <div class="panel" style="overflow-x:auto"><h3>1. Ingest: ${DATA_SOURCES.length} sources, ${recs.length} records</h3>
+    <table><tr><th>Source</th><th>Format</th><th class="num">Records</th><th class="num">Reliability</th><th>Trusted for</th><th>Mapped to the standard</th></tr>${srcRows}</table>
+    <p class="small muted" style="margin-bottom:0">Every source becomes one shape: asset, type, text, value, direction, source and time. Asset names ("Bitcoin", "XBT", "$BTC") and date formats are standardized on the way in.</p></div>
+
+  <div class="panel" style="overflow-x:auto"><h3>2. Check</h3>
+    <div class="row" style="gap:28px;margin-bottom:12px">
+      ${[['Records in',recs.length],['Counted',counted],['Standardized',n('fixed')],['Duplicates',n('duplicate')],['Stale',n('stale')],['Missing fields',n('missing')],['Below bar',n('low')],['Conflicts',conflicts.length]].map(([l,v])=>`<div class="kpi">${l}<b>${v}</b></div>`).join('')}
+    </div>
+    ${conflicts.length ? `<div class="banner ${openStory?'bad':'info'}"><b>Conflicts.</b> ${conflicts.map(x=>`<div style="margin-top:4px">${x.auto?'<span class="chip info">auto-resolved</span>':'<span class="chip block">needs a person</span>'} ${esc(x.text)}</div>`).join('')}
+      ${conflicts.some(x=>!x.auto) ? `<div class="row" style="margin-top:8px"><button class="btn sm" onclick="sendConflicts()" ${openStory?'':'disabled'}>${openStory ? `Send ${openStory} to review queue` : 'Sent to review queue'}</button><span class="small">Clear-cut conflicts resolve on their own. Gray areas go to a person.</span></div>` : ''}</div>` : ''}
+    <table><tr><th>Status</th><th>Asset</th><th>Source</th><th>Record</th><th>Age</th><th>What happened</th></tr>${recRows}</table></div>
+
+  <div class="panel"><h3>3. Result</h3>
+    <div class="grid2">${res.map(card).join('')}</div>
+    <p class="small muted" style="margin-bottom:0">Each summary weighs only records that passed, by source reliability and freshness. It describes what trusted sources report right now. It is not a price forecast.</p></div>`;
 }
 
 /* ---------- risk signals (simulated third-party vendors) ---------- */
